@@ -8,6 +8,8 @@ support surface mature.
 
 ### Added
 
+- Public alpha status: one physically validated `83LU`, no inferred support
+  for similar names or configurations, visible disclaimer and MIT terms.
 - Public project identity for `ulrickpsp/legion-control-linux`.
 - Offline release gate covering tests, compilation, desktop/AppStream metadata,
   shell syntax, Debian build, package contents, and cache exclusion.

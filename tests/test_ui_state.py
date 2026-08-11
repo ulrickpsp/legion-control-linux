@@ -12,11 +12,20 @@ gi.require_version("Gtk", "4.0")
 
 from gi.repository import Adw, Gdk  # noqa: E402
 
-from legion_control.domain import FanMode  # noqa: E402
+from legion_control.automation import AutomationStore  # noqa: E402
+from legion_control.domain import DEFAULT_CURVE, FanMode  # noqa: E402
 from legion_control.history import TelemetryArchive  # noqa: E402
 from legion_control.mock import MockControlClient  # noqa: E402
 from legion_control.scenes import SceneSlot, SceneStore  # noqa: E402
-from legion_control.ui import FanPage, HomePage, MainWindow, Operation  # noqa: E402
+from legion_control.ui import (  # noqa: E402
+    PROFILE_VALUES,
+    SELECTABLE_PROFILE_VALUES,
+    FanPage,
+    HomePage,
+    MainWindow,
+    Operation,
+)
+from legion_control.ui_automation import AutomationPage  # noqa: E402
 from legion_control.ui_lighting import LightingPage  # noqa: E402
 from legion_control.ui_scenes import ScenePanel  # noqa: E402
 
@@ -213,6 +222,89 @@ class PageStateTests(unittest.TestCase):
         self.assertFalse(operation_called)
         self.assertTrue(failure_called)
         self.assertEqual(window.messages, ["Espera a que termine el cambio en curso."])
+
+
+class ConfigurationClarityTests(unittest.TestCase):
+    """Choices the interface offers must be choices the hardware accepts."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest(
+                "Los tests GTK necesitan un display; usa un runner Wayland/X11 virtual."
+            )
+        Adw.init()
+
+    def setUp(self) -> None:
+        self.client = MockControlClient()
+        self.mutations = MutationCapture()
+
+    def _home(self) -> HomePage:
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        return HomePage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            telemetry_archive=TelemetryArchive(Path(directory.name) / "telemetry.jsonl"),
+        )
+
+    def test_profile_row_does_not_offer_custom_as_a_choice(self) -> None:
+        page = self._home()
+        model = page._profile_row.get_model()
+
+        offered = [model.get_string(index) for index in range(model.get_n_items())]
+
+        self.assertNotIn("custom", SELECTABLE_PROFILE_VALUES)
+        self.assertEqual(len(offered), len(PROFILE_VALUES) - 1)
+        self.assertNotIn("Personalizado", offered)
+
+    def test_custom_profile_is_reported_as_state_rather_than_a_selection(self) -> None:
+        page = self._home()
+        self.client.profile = "custom"
+
+        page.update_status(self.client.read_status())
+
+        self.assertIn("lo activa", page._profile_row.get_subtitle())
+
+    def test_selecting_a_profile_still_maps_to_the_right_value(self) -> None:
+        page = self._home()
+        page.update_status(self.client.read_status())
+
+        page._profile_row.set_selected(SELECTABLE_PROFILE_VALUES.index("low-power"))
+        operation, _message, _success, _failure = self.mutations.calls[-1]
+        operation()
+
+        self.assertEqual(self.client.profile, "low-power")
+
+    def test_reset_curve_restores_the_shipped_points_as_a_draft(self) -> None:
+        page = FanPage(self.client, self.mutations, lambda: None)
+        page.update_status(self.client.read_status())
+        temperature_spin, rpm_spin = page._point_spins[0]
+        temperature_spin.set_value(99)
+        rpm_spin.set_value(5300)
+
+        page._on_reset_curve_clicked(page._reset_curve_button)
+
+        first = DEFAULT_CURVE.points[0]
+        self.assertEqual(temperature_spin.get_value_as_int(), first.temperature_c)
+        self.assertEqual(rpm_spin.get_value_as_int(), first.rpm)
+        self.assertTrue(page._editor_dirty)
+
+    def test_scene_rows_follow_their_automation_switch(self) -> None:
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        page = AutomationPage(
+            AutomationStore(Path(directory.name) / "automation.json"),
+            lambda _message: None,
+            lambda _message: None,
+        )
+
+        self.assertFalse(page._ac_scene.get_sensitive())
+        page._ac_enabled.set_active(True)
+        self.assertTrue(page._ac_scene.get_sensitive())
+        page._ac_enabled.set_active(False)
+        self.assertFalse(page._ac_scene.get_sensitive())
 
 
 if __name__ == "__main__":

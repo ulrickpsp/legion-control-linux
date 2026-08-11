@@ -85,6 +85,10 @@ PROFILE_LABELS: Final = (
     "Rendimiento máximo",
     "Personalizado",
 )
+# "custom" is a consequence of applying a fan or power configuration, not
+# something worth offering as a choice: picking it by hand would leave the
+# platform in custom mode with the fans still under firmware control.
+SELECTABLE_PROFILE_VALUES: Final = tuple(value for value in PROFILE_VALUES if value != "custom")
 BRAND_SPACING: Final = 9
 HEADER_SIDE_PADDING: Final = 24
 MODE_VALUES: Final = (FanMode.AUTO, FanMode.FIXED, FanMode.CURVE)
@@ -250,12 +254,12 @@ class HomePage(Adw.PreferencesPage):
 
         profile_group = Adw.PreferencesGroup()
         profile_group.set_title("Rendimiento")
-        profile_group.set_description("Ruido, consumo y potencia")
+        profile_group.set_description("Ruido, consumo y potencia · se aplica al instante")
         self._profile_row = Adw.ComboRow()
         self._profile_row.set_title("Perfil térmico")
         self._profile_row.set_subtitle("Esperando lectura del kernel")
         self._profile_row.set_model(
-            Gtk.StringList.new(tuple(translate(label) for label in PROFILE_LABELS))
+            Gtk.StringList.new(tuple(_profile_label(value) for value in SELECTABLE_PROFILE_VALUES))
         )
         self._profile_row.add_prefix(
             _prefix_icon("power-profile-balanced-symbolic", "Perfil térmico")
@@ -346,15 +350,19 @@ class HomePage(Adw.PreferencesPage):
         )
         owner = translate("Curva activa") if service_active else translate("Control firmware")
         self._hero_context.set_label(f"{profile_label} · {owner}")
-        if profile in PROFILE_VALUES:
+        if profile in SELECTABLE_PROFILE_VALUES:
             if self._pending_profile is None or profile == self._pending_profile:
-                self._profile_row.set_selected(PROFILE_VALUES.index(profile))
+                self._profile_row.set_selected(SELECTABLE_PROFILE_VALUES.index(profile))
             if profile == self._pending_profile:
                 self._pending_profile = None
             if self._pending_profile is None:
                 self._profile_row.set_subtitle(
                     translate("Confirmado por el kernel: {profile}", profile=profile_label)
                 )
+        elif profile == "custom" and self._pending_profile is None:
+            self._profile_row.set_subtitle(
+                translate("Personalizado · lo activa la curva o la RPM fija")
+            )
         if self._pending_profile is not None:
             pending_label = _profile_label(self._pending_profile)
             self._profile_row.set_subtitle(
@@ -369,14 +377,14 @@ class HomePage(Adw.PreferencesPage):
         if self._refreshing:
             return
         index = row.get_selected()
-        if index >= len(PROFILE_VALUES):
+        if index >= len(SELECTABLE_PROFILE_VALUES):
             return
-        profile = PROFILE_VALUES[index]
+        profile = SELECTABLE_PROFILE_VALUES[index]
         if profile not in self._available_profiles:
             return
         self._pending_profile = profile
         self._profile_row.set_sensitive(False)
-        profile_label = _profile_label(PROFILE_VALUES[index])
+        profile_label = _profile_label(profile)
         self._profile_row.set_subtitle(translate("Confirmando {profile}…", profile=profile_label))
 
         def finish() -> None:
@@ -456,13 +464,13 @@ class FanPage(Adw.PreferencesPage):
         self.add(safety_group)
 
         self._power_group = Adw.PreferencesGroup()
-        self._power_group.set_title("Potencia Custom")
-        self._power_group.set_description("CPU y ventilación se aplican juntas en Personalizado")
+        self._power_group.set_title("Potencia personalizada")
+        self._power_group.set_description("Se aplica junto con la ventilación al pulsar Aplicar")
         self._power_group.set_visible(False)
 
         sustained_row = Adw.ActionRow()
         sustained_row.set_title("Potencia sostenida")
-        sustained_row.set_subtitle("Límite estable de CPU (PPT PL1 / SPL)")
+        sustained_row.set_subtitle("Vatios que la CPU puede mantener sin parar · PPT PL1")
         sustained_row.add_prefix(_prefix_icon("speedometer-symbolic", "Potencia sostenida"))
         self._sustained_adjustment = Gtk.Adjustment(
             value=70,
@@ -479,7 +487,7 @@ class FanPage(Adw.PreferencesPage):
 
         slow_row = Adw.ActionRow()
         slow_row.set_title("Potencia lenta")
-        slow_row.set_subtitle("Techo temporal de CPU (PPT PL2 / SPPT)")
+        slow_row.set_subtitle("Vatios de pico en ráfagas cortas · PPT PL2")
         slow_row.add_prefix(_prefix_icon("power-profile-performance-symbolic", "Potencia lenta"))
         self._slow_adjustment = Gtk.Adjustment(
             value=125,
@@ -500,7 +508,7 @@ class FanPage(Adw.PreferencesPage):
         self._editor_group = Adw.PreferencesGroup()
         self._editor_group.set_title("Modo de ventilación")
         self._editor_group.set_description(
-            "Curva con filtrado e histéresis · continúa aunque cierres la ventana"
+            "Se aplica al pulsar Aplicar · la curva continúa aunque cierres la ventana"
         )
 
         self._mode_selector = Gtk.Box(
@@ -525,17 +533,6 @@ class FanPage(Adw.PreferencesPage):
             self._mode_buttons[mode] = button
         self._editor_group.add(self._mode_selector)
 
-        apply_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        apply_box.set_halign(Gtk.Align.END)
-        apply_box.set_margin_top(12)
-        self._apply_button = Gtk.Button(label="Aplicar curva")
-        self._apply_button.add_css_class("suggested-action")
-        self._apply_button.add_css_class("legion-primary")
-        self._apply_button.connect("clicked", self._on_apply_clicked)
-        self._apply_button.set_sensitive(False)
-        apply_box.append(self._apply_button)
-        self._editor_group.add(apply_box)
-
         self._editor_stack = Gtk.Stack()
         self._editor_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self._editor_stack.set_transition_duration(180)
@@ -546,6 +543,23 @@ class FanPage(Adw.PreferencesPage):
         self._editor_stack.add_named(self._build_fixed_editor(), "fixed")
         self._editor_stack.add_named(self._build_curve_editor(), "curve")
         self._editor_group.add(self._editor_stack)
+
+        # The confirming action sits after what it confirms, so the page reads
+        # top to bottom: pick a mode, adjust it, then apply.
+        apply_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        apply_box.set_halign(Gtk.Align.END)
+        apply_box.set_margin_top(16)
+        self._reset_curve_button = Gtk.Button(label="Restablecer curva")
+        self._reset_curve_button.connect("clicked", self._on_reset_curve_clicked)
+        self._reset_curve_button.set_visible(False)
+        self._apply_button = Gtk.Button(label="Aplicar curva")
+        self._apply_button.add_css_class("suggested-action")
+        self._apply_button.add_css_class("legion-primary")
+        self._apply_button.connect("clicked", self._on_apply_clicked)
+        self._apply_button.set_sensitive(False)
+        apply_box.append(self._reset_curve_button)
+        apply_box.append(self._apply_button)
+        self._editor_group.add(apply_box)
         self.add(self._editor_group)
 
     def _build_auto_editor(self) -> Gtk.Widget:
@@ -807,9 +821,22 @@ class FanPage(Adw.PreferencesPage):
             FanMode.CURVE: translate("Aplicar curva + potencia"),
         }
         self._apply_button.set_label(labels[mode])
+        self._reset_curve_button.set_visible(mode is FanMode.CURVE)
         self._sync_power_group(mode)
         if not self._refreshing:
             self._set_editor_dirty(True)
+
+    def _on_reset_curve_clicked(self, _button: Gtk.Button) -> None:
+        """Put the five points back to the shipped curve, still as a draft."""
+        self._refreshing = True
+        for point, (temperature_spin, rpm_spin) in zip(
+            DEFAULT_CURVE.points, self._point_spins, strict=True
+        ):
+            temperature_spin.set_value(point.temperature_c)
+            rpm_spin.set_value(point.rpm)
+        self._refreshing = False
+        self._set_editor_dirty(True)
+        self._graph.queue_draw()
 
     def _on_restore_clicked(self, _button: Gtk.Button) -> None:
         self._restore_button.set_sensitive(False)
@@ -908,7 +935,9 @@ class FanPage(Adw.PreferencesPage):
             )
         else:
             self._editor_group.set_description(
-                translate("Curva con filtrado e histéresis · continúa aunque cierres la ventana")
+                translate(
+                    "Se aplica al pulsar Aplicar · la curva continúa aunque cierres la ventana"
+                )
             )
         self._sync_apply_button()
 
@@ -1108,7 +1137,7 @@ class DevicePage(Adw.PreferencesPage):
 
         group = Adw.PreferencesGroup()
         group.set_title("Funciones del equipo")
-        group.set_description("Cambios guardados por el firmware")
+        group.set_description("Se aplican al instante y las guarda el firmware")
         self._rows: dict[str, Adw.SwitchRow] = {}
         for feature, (title, subtitle) in self.FEATURE_COPY.items():
             row = Adw.SwitchRow()

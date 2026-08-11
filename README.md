@@ -3,6 +3,13 @@
 Native GTK4/libadwaita control center for the Lenovo Legion Pro 5 16IAX10H
 (`83LU`) on Linux.
 
+> [!WARNING]
+> **Status: alpha.** Legion Control 0.5.0 was physically tested on one unit
+> only. This is not a compatibility promise for another laptop, although truly
+> equivalent units —same `83LU` DMI, BIOS, ITE controller, and WMI attributes—
+> are more likely to behave the same. The application does not expand its
+> allowlist from a marketing name or apparent similarity.
+
 > [!IMPORTANT]
 > Hardware writes are allowlisted for product `83LU` only. Similar Legion
 > names do not imply compatibility. Do not bypass the model check.
@@ -41,6 +48,10 @@ Ubuntu 22.04 is not supported because its default Python is older than the
 required Python 3.12. See
 [`docs/HARDWARE-SUPPORT.md`](docs/HARDWARE-SUPPORT.md).
 
+Before any write on another unit, compare its identity with the table above,
+run only the hardware guide's read-only checks, and keep firmware fan control
+available. A matching marketing name alone is not enough.
+
 ## Safety model
 
 - The GTK application remains unprivileged.
@@ -66,6 +77,7 @@ Download the `.deb` from the repository's Releases page, then install it with
 APT so dependencies and package lifecycle scripts are applied:
 
 ```bash
+sha256sum --check SHA256SUMS
 sudo apt install ./legion-control_0.5.0_all.deb
 ```
 
@@ -131,7 +143,20 @@ RGB, firmware flashing, and third-party kernel modules. Likely next steps are a
 read-only Doctor report, tray/CLI workflows, AC/battery automations, and bounded
 24-zone effects. New hardware support requires its own reversible evidence.
 
+## Alpha disclaimer
+
+This is independent community **alpha** software. It changes fan, power,
+platform-profile and keyboard-lighting state. Use it at your own risk; monitor
+temperatures, do not bypass hardware checks, and return to firmware control if
+behavior is unexpected. To the maximum extent allowed by law, the authors and
+contributors accept no liability for damage, data loss, overheating, reduced
+performance, or other consequences of use. Lenovo does not endorse, support or
+affiliate with this project.
+
 ## License
 
 Legion Control is available under the [MIT License](LICENSE). Lenovo and Legion
-are trademarks of their respective owners.
+are trademarks of their respective owners. The MIT license provides the full
+no-warranty and limitation-of-liability terms. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for protocol research and
+other attributions.

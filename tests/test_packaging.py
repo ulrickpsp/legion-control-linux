@@ -22,6 +22,10 @@ class PackagingSafetyTests(unittest.TestCase):
         project_url = "https://github.com/ulrickpsp/legion-control-linux"
         project = tomllib.loads(_read("pyproject.toml"))
         self.assertEqual(project["project"]["urls"]["Homepage"], project_url)
+        self.assertIn(
+            "Development Status :: 3 - Alpha",
+            project["project"]["classifiers"],
+        )
 
         desktop = _read(f"packaging/applications/{app_id}.desktop")
         self.assertIn(f"Icon={app_id}", desktop)
@@ -30,6 +34,24 @@ class PackagingSafetyTests(unittest.TestCase):
         self.assertIn(f'<url type="homepage">{project_url}</url>', metainfo)
         self.assertIn(f'APPLICATION_ID: Final = "{app_id}"', _read("legion_control/ui.py"))
         self.assertIn(f"Homepage: {project_url}", _read("packaging/debian/control"))
+
+    def test_public_alpha_scope_and_disclaimer_are_explicit(self) -> None:
+        readme = _read("README.md")
+        for fragment in (
+            "**Status: alpha.**",
+            "one unit",
+            "Use it at your own risk",
+            "MIT License",
+            "does not expand its\n> allowlist",
+        ):
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, readme)
+
+        metainfo = _read(
+            "packaging/metainfo/io.github.ulrickpsp.LegionControl.metainfo.xml"
+        )
+        self.assertIn("Controles alpha para el Lenovo Legion 83LU", metainfo)
+        self.assertIn("una sola unidad", metainfo)
 
     def test_privileged_helper_requires_active_admin_authentication(self) -> None:
         policy = ET.fromstring(_read("packaging/polkit/io.github.ulrickpsp.policy"))

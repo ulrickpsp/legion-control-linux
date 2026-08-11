@@ -93,8 +93,8 @@ Important limitations:
 - The controller provides no trustworthy semantic readback for the complete
   static configuration. An accepted ioctl proves transport success, not that
   every LED visibly changed.
-- Static colors, off, gradients, and waves are implemented. Animated firmware
-  effects are intentionally outside the current scope.
+- Static colors, off, gradients, waves, and locally rendered animations are
+  implemented. Firmware animation commands are intentionally outside scope.
 - A disconnect or controller stall remains possible, but a replaced hidraw node
   is rejected by revalidating VID/PID and descriptor from the opened FD.
 
@@ -103,6 +103,36 @@ See [`RGB-PROTOCOL.md`](RGB-PROTOCOL.md) for the exact observed framing.
 Gradient and wave presets are static 24-zone frames encoded with that same
 verified profile `1` sequence. They do not use animation/effect commands and
 must not be represented as firmware animation support.
+
+## Animated effects
+
+Animated effects are drawn by this project, one static frame at a time. The
+keyboard is never told to animate itself; no effect, speed, or direction
+command is sent, and the opaque constant bytes in each colour group are
+reproduced unchanged.
+
+Frames come from a root service, `legion-control-rgbd`, because authorizing
+each frame through PolicyKit would spawn a privileged process 20 times a
+second. That service is a smaller target than the fan daemon:
+
+| Property | Behavior |
+|---|---|
+| Devices | `DevicePolicy=closed` with a single `char-hidraw rw` allowance. `PrivateDevices` cannot be used because the controller is a `/dev/hidrawN` node. |
+| Filesystem | `ProtectSystem=strict` and `ProtectHome=yes`; it reads its settings and writes nothing. |
+| Capabilities | Empty bounding and ambient sets, `NoNewPrivileges=yes`. |
+| Network | `PrivateNetwork=yes`, `RestrictAddressFamilies=AF_UNIX AF_NETLINK`. |
+| Identity | The same VID/PID and report-descriptor checks as a static write, run on the descriptor the frames are written to. |
+| Failure | One reopen covers a resume-time re-enumeration; a second failure exits instead of retrying, and `StartLimitBurst=3` stops systemd from restarting it forever. |
+| Stop | The service restores the last saved static configuration, in its own `finally` path and again through `ExecStopPost`. |
+
+The animation never starts on its own. It runs only after an effect is chosen,
+and any static change — a preset, a zone colour, turning lighting off — stops
+it first, because two writers on one controller would fight over the keyboard.
+
+Whether the colour command reaches non-volatile controller storage is not
+established by this project's evidence. See the controller-wear section in
+[`RGB-PROTOCOL.md`](RGB-PROTOCOL.md) for how that is assessed and what remains
+unknown.
 
 ## Known limits of the safety model
 

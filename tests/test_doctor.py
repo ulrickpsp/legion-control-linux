@@ -4,6 +4,7 @@ import unittest
 
 from legion_control import __version__
 from legion_control.doctor import DoctorSeverity, build_doctor_report
+from legion_control.i18n import translate
 
 
 class DoctorReportTests(unittest.TestCase):
@@ -47,6 +48,28 @@ def _status() -> dict[str, object]:
         "fan2_rpm": 2100,
         "fan_service_active": False,
     }
+
+
+class DoctorEffectTests(unittest.TestCase):
+    def test_a_running_effect_is_named_in_the_report(self) -> None:
+        status = _status()
+        status["rgb_effect_active"] = True
+        status["rgb_effect"] = {"kind": "aurora", "speed_percent": 55}
+
+        report = build_doctor_report(status, kernel_release="7.0.0-29-generic")
+
+        effect = next(item for item in report.findings if item.key == "rgb_effect")
+        self.assertIn("aurora", effect.value)
+        self.assertIn("55", effect.value)
+
+    def test_no_effect_reads_as_none(self) -> None:
+        report = build_doctor_report(_status(), kernel_release="7.0.0-29-generic")
+
+        # Another test may have left a different language active, so assert the
+        # branch rather than the Spanish spelling of it.
+        effect = next(item for item in report.findings if item.key == "rgb_effect")
+        self.assertEqual(effect.value, translate("ninguno"))
+        self.assertNotIn("aurora", effect.value)
 
 
 if __name__ == "__main__":

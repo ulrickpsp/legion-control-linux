@@ -10,6 +10,11 @@ from typing import Final, Protocol
 
 from legion_control.config import policy_to_json
 from legion_control.domain import FanPolicy
+from legion_control.effects import (
+    EffectSettings,
+    effect_settings_from_json,
+    effect_settings_to_json,
+)
 from legion_control.linux import SysfsHardware
 from legion_control.power import CustomPowerLimits, power_limits_to_json
 from legion_control.rgb import (
@@ -25,6 +30,8 @@ from legion_control.system_contract import (
     PKEXEC_PATH,
     PRIVILEGED_HELPER_PATH,
     RGB_CONFIG_PATH,
+    RGB_EFFECT_CONFIG_PATH,
+    RGB_SERVICE_NAME,
     SYSTEMCTL_PATH,
 )
 
@@ -53,6 +60,7 @@ class ControlPort(Protocol):
         self,
         configuration: RgbConfiguration,
     ) -> dict[str, object]: ...
+    def set_rgb_effect(self, settings: EffectSettings) -> dict[str, object]: ...
 
 
 @dataclass(slots=True)
@@ -69,12 +77,15 @@ class LocalControlClient:
             capabilities["rgb_control"] = rgb_available
             capabilities["rgb_zones"] = RGB_ZONE_COUNT if rgb_available else 0
         status["fan_policy"] = _read_public_policy()
-        status["fan_service_active"] = _service_is_active()
+        status["fan_service_active"] = _service_is_active(FAN_SERVICE_NAME)
         rgb_configuration = _read_public_rgb_configuration()
         status["rgb_configuration_known"] = rgb_configuration is not None
         status["rgb_configuration"] = (
             rgb_configuration.to_dict() if rgb_configuration is not None else None
         )
+        effect = _read_public_rgb_effect()
+        status["rgb_effect"] = effect.to_dict() if effect is not None else None
+        status["rgb_effect_active"] = _service_is_active(RGB_SERVICE_NAME)
         return status
 
     def set_profile(self, profile: str) -> dict[str, object]:
@@ -108,6 +119,9 @@ class LocalControlClient:
             "set-rgb-config",
             rgb_configuration_to_json(configuration),
         )
+
+    def set_rgb_effect(self, settings: EffectSettings) -> dict[str, object]:
+        return self._mutate("set-rgb-effect", effect_settings_to_json(settings))
 
     @staticmethod
     def _mutate(*arguments: str) -> dict[str, object]:
@@ -169,10 +183,17 @@ def _read_public_rgb_configuration() -> RgbConfiguration | None:
         return None
 
 
-def _service_is_active() -> bool:
+def _read_public_rgb_effect() -> EffectSettings | None:
+    try:
+        return effect_settings_from_json(RGB_EFFECT_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _service_is_active(unit: str) -> bool:
     try:
         result = subprocess.run(
-            [str(SYSTEMCTL_PATH), "is-active", "--quiet", FAN_SERVICE_NAME],
+            [str(SYSTEMCTL_PATH), "is-active", "--quiet", unit],
             check=False,
             timeout=5,
             env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin"},

@@ -10,7 +10,7 @@ export SOURCE_DATE_EPOCH
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUTPUT_DIR=${1:-"$PROJECT_DIR/../outputs"}
 BUILD_ROOT="$PROJECT_DIR/build"
-PACKAGE_NAME="legion-control_0.7.0_all.deb"
+PACKAGE_NAME="legion-control_0.8.0_all.deb"
 
 mkdir -p "$BUILD_ROOT" "$OUTPUT_DIR"
 STAGING_DIR=$(mktemp -d "$BUILD_ROOT/staging.XXXXXX")
@@ -44,8 +44,12 @@ install -m 0755 "$PROJECT_DIR/packaging/libexec/legion-control-helper" \
     "$STAGING_DIR/usr/libexec/legion-control-helper"
 install -m 0755 "$PROJECT_DIR/packaging/libexec/legion-control-fand" \
     "$STAGING_DIR/usr/libexec/legion-control-fand"
+install -m 0755 "$PROJECT_DIR/packaging/libexec/legion-control-rgbd" \
+    "$STAGING_DIR/usr/libexec/legion-control-rgbd"
 install -m 0644 "$PROJECT_DIR/packaging/systemd/legion-control-fand.service" \
     "$STAGING_DIR/usr/lib/systemd/system/legion-control-fand.service"
+install -m 0644 "$PROJECT_DIR/packaging/systemd/legion-control-rgbd.service" \
+    "$STAGING_DIR/usr/lib/systemd/system/legion-control-rgbd.service"
 install -m 0644 "$PROJECT_DIR/packaging/polkit/io.github.ulrickpsp.policy" \
     "$STAGING_DIR/usr/share/polkit-1/actions/io.github.ulrickpsp.policy"
 install -m 0644 \

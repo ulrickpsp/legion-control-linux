@@ -4,11 +4,12 @@ Native GTK4/libadwaita control center for the Lenovo Legion Pro 5 16IAX10H
 (`83LU`) on Linux.
 
 > [!WARNING]
-> **Status: alpha.** All physical validation comes from one unit. For 0.7.0 it
+> **Status: alpha.** All physical validation comes from one unit. For 0.8.0 it
 > covered the read-only report, platform profiles, fixed RPM, a curve under
-> load, restore-to-firmware, and the 24-zone RGB path including the presets.
-> The emergency thermal paths at 92 °C and 98 °C were not reached, and package
-> installation, upgrade and removal were not exercised.
+> load, restore-to-firmware, the 24-zone RGB path including the presets, and
+> the animated effect service on the real controller. The emergency thermal
+> paths at 92 °C and 98 °C were not reached, and package installation, upgrade
+> and removal were not exercised.
 > This is not a compatibility promise for another laptop, although truly
 > equivalent units —same `83LU` DMI, BIOS, ITE controller, and WMI attributes—
 > are more likely to behave the same. The application does not expand its
@@ -32,6 +33,9 @@ DKMS module, firmware flash, account, telemetry, or network service.
 - Custom sustained/slow CPU power limits within firmware-published bounds.
 - Static 24-zone RGB, brightness, presets, wave/gradient frames, and off for
   ITE `048d:c195`.
+- Six animated keyboard effects — breathing, rainbow, wave, comet, fire and
+  aurora — rendered locally as successive verified static frames by a hardened
+  root service. No firmware animation command is sent.
 - Three local quick scenes: Silence, Work, and Game.
 - Opt-in AC/battery scene automation while the application is open.
 - Battery conservation, Fn Lock, and camera power when exposed by the kernel.
@@ -91,7 +95,7 @@ APT so dependencies and package lifecycle scripts are applied:
 
 ```bash
 sha256sum --check SHA256SUMS
-sudo apt install ./legion-control_0.7.0_all.deb
+sudo apt install ./legion-control_0.8.0_all.deb
 ```
 
 Launch **Legion Control** from the application grid.
@@ -181,11 +185,13 @@ gates. A successful unit suite is not evidence for a new laptop model.
 
 ## Scope and roadmap
 
-Version 0.7.0 deliberately excludes overclocking, GPU/MUX switching, animated
-RGB firmware effects, firmware flashing, and third-party kernel modules. Static
-24-zone gradients and waves use only the verified static report sequence; they
-do not claim or send an animation command. New hardware support requires its
-own reversible evidence.
+Version 0.8.0 deliberately excludes overclocking, GPU/MUX switching, animated
+RGB *firmware* effects, firmware flashing, and third-party kernel modules.
+Static gradients and waves, and the animated effects added in this release, use
+only the verified static report sequence: the animation is computed on the
+machine and sent frame by frame, and no effect, speed, or direction command is
+claimed or sent to the controller. New hardware support requires its own
+reversible evidence.
 
 ## Alpha disclaimer
 

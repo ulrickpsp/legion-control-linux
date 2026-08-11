@@ -11,6 +11,9 @@ from legion_control.client import (
     LocalControlClient,
     _service_is_active,
 )
+from legion_control.effects import EffectKind, EffectSettings, effect_settings_to_json
+from legion_control.rgb import RgbColor
+from legion_control.system_contract import FAN_SERVICE_NAME, RGB_SERVICE_NAME
 
 
 class LocalControlClientTests(unittest.TestCase):
@@ -85,8 +88,38 @@ class LocalControlClientTests(unittest.TestCase):
     def test_service_probe_is_bounded_and_treats_timeout_as_inactive(self, run_mock) -> None:
         run_mock.side_effect = subprocess.TimeoutExpired("systemctl", 5)
 
-        self.assertFalse(_service_is_active())
+        self.assertFalse(_service_is_active(FAN_SERVICE_NAME))
         self.assertEqual(run_mock.call_args.kwargs["timeout"], 5)
+
+    @patch("legion_control.client.subprocess.run")
+    def test_effect_probe_asks_about_the_effect_unit(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess([], 0)
+
+        self.assertTrue(_service_is_active(RGB_SERVICE_NAME))
+        self.assertIn(RGB_SERVICE_NAME, run_mock.call_args.args[0])
+
+    @patch("legion_control.client.subprocess.run")
+    def test_set_rgb_effect_sends_the_serialized_settings(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            [],
+            0,
+            stdout='{"ok":true,"result":{"effect":"comet","service_active":true}}',
+            stderr="",
+        )
+        settings = EffectSettings(
+            kind=EffectKind.COMET,
+            speed_percent=64,
+            brightness_percent=80,
+            color=RgbColor(12, 240, 90),
+        )
+
+        result = LocalControlClient(hardware=None).set_rgb_effect(settings)  # type: ignore[arg-type]
+
+        self.assertEqual(result["effect"], "comet")
+        self.assertEqual(
+            run_mock.call_args.args[0],
+            [str(PKEXEC), str(HELPER), "set-rgb-effect", effect_settings_to_json(settings)],
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,8 @@
+#!/usr/bin/python3 -I
+import sys
+
+sys.path.insert(0, "/usr/lib/legion-control")
+
+from legion_control.rgbd import main
+
+raise SystemExit(main())

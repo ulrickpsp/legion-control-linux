@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from legion_control.config import default_policy
 from legion_control.domain import FanMode, FanPolicy
+from legion_control.effects import EffectSettings, default_effect_settings
 from legion_control.power import (
     CustomPowerLimits,
     PowerLimitBounds,
@@ -31,6 +32,7 @@ class MockControlClient:
             70,
         )
     )
+    rgb_effect: EffectSettings = field(default_factory=default_effect_settings)
     features: dict[str, bool] = field(
         default_factory=lambda: {
             "conservation_mode": True,
@@ -93,6 +95,8 @@ class MockControlClient:
             },
             "rgb_configuration_known": True,
             "rgb_configuration": self.rgb_configuration.to_dict(),
+            "rgb_effect": self.rgb_effect.to_dict(),
+            "rgb_effect_active": self.rgb_effect.enabled,
         }
 
     def set_profile(self, profile: str) -> dict[str, object]:
@@ -139,10 +143,20 @@ class MockControlClient:
         configuration: RgbConfiguration,
     ) -> dict[str, object]:
         self.rgb_configuration = configuration
+        self.rgb_effect = replace(self.rgb_effect, enabled=False)
         return {
             "enabled": configuration.enabled,
             "brightness_percent": configuration.brightness_percent,
             "zones": len(configuration.zones),
+        }
+
+    def set_rgb_effect(self, settings: EffectSettings) -> dict[str, object]:
+        self.rgb_effect = settings
+        return {
+            "effect": settings.kind.value,
+            "speed_percent": settings.speed_percent,
+            "brightness_percent": settings.brightness_percent,
+            "service_active": settings.enabled,
         }
 
     @staticmethod

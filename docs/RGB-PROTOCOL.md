@@ -117,6 +117,57 @@ Off uses two reports:
 Both are padded to 960 bytes. The saved application configuration retains its
 24 colors so they can be reused when lighting is enabled again.
 
+## Software-rendered animation
+
+Animated effects are rendered by this project, not by the controller. Each
+frame is an ordinary static configuration sent through the sequence documented
+above. **No animation, effect-type, speed, or direction command is claimed or
+sent.** The fourteen constant bytes inside every colour group are reproduced
+unchanged on every frame, exactly as for a static preset.
+
+This distinction is the whole reason the feature exists in this form. Versions
+`0.4.5`–`0.4.7` were withdrawn for assuming semantics the hardware had not
+confirmed. Naming one of those opaque bytes an "effect selector" and sweeping
+its values would repeat that mistake, so the project animates with the report
+sequence it has actually verified instead.
+
+Frames are written by a root service, `legion-control-rgbd`, because a
+`pkexec` round trip per frame would spawn a privileged process many times a
+second. The service:
+
+- opens the same validated `/dev/hidrawN` once and runs the same VID/PID and
+  descriptor checks on that descriptor;
+- sends `C8` and `CE` once, when the session opens, since profile selection and
+  brightness do not change between frames;
+- sends only the `CB` colour report per frame, at 20 frames per second;
+- skips a frame whose 24 colours are identical to the previous one;
+- reopens the controller at most once, to survive a USB re-enumeration after
+  resume, and then fails rather than retrying indefinitely;
+- writes the last saved static configuration back when it stops.
+
+Effects are pure functions of their settings and the elapsed time, so a
+restarted service resumes the same animation rather than a different one.
+
+A static write and an animation must never share the controller. The helper
+stops the effect service before applying a static configuration, and
+`systemctl disable --now` returns only after the service's restore step has
+finished, which orders the two writers.
+
+### Controller wear
+
+Command `CB` is described in this document as saving zone groups into profile
+`1`. Whether that write reaches non-volatile storage is not established by the
+evidence here, and it matters: a page-programming write repeated 20 times a
+second would be a durability problem rather than a performance one.
+
+The proxy this project uses is write latency measured on the real controller.
+Programming a page on this class of microcontroller costs milliseconds and
+grows with payload size, while a volatile register write does not. `CB` is
+therefore compared against `C8` and `CE`, a one-group `CB` against a
+twenty-four-group `CB`, and a sustained burst against its own first half.
+
+Animation is opt-in and never starts on its own.
+
 ## Concurrency and persistence
 
 The root helper serializes privileged operations with
@@ -140,9 +191,15 @@ visibly applied.
 - arbitrary commands or raw caller-provided reports;
 - device-path overrides;
 - interface `01` LampArray writes;
-- animated or streaming effects;
+- firmware animation commands, including any interpretation of the opaque
+  constant bytes as an effect, speed, or direction selector;
 - controller reads that are not proven safe;
 - USB IDs, DMI products, or descriptor families other than the validated path.
+
+Animation rendered by this project from the verified static sequence is
+supported and described under
+[Software-rendered animation](#software-rendered-animation). It is not a
+firmware effect.
 
 ## Research provenance
 

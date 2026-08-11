@@ -14,6 +14,7 @@ from legion_control.rgb import (
     LegionRgbHardware,
     RgbColor,
     RgbConfiguration,
+    RgbSession,
     _send_feature_reports,
     _validate_open_device,
     alternating_rgb_configuration,
@@ -21,8 +22,10 @@ from legion_control.rgb import (
     rgb_configuration_from_document,
     rgb_configuration_from_json,
     rgb_configuration_to_json,
+    reports_for,
     solid_rgb_configuration,
     wave_rgb_configuration,
+    zone_reports_for,
 )
 from legion_control.ui_lighting import LightingPage
 
@@ -252,9 +255,12 @@ class FeatureReportTransportTests(unittest.TestCase):
         validate_mock.assert_called_once_with(42)
         self.assertEqual(ioctl_mock.call_count, 3)
         self.assertTrue(all(invocation.args[0] == 42 for invocation in ioctl_mock.call_args_list))
+        # The delay spaces consecutive reports, so a three-report sequence waits
+        # twice. A trailing wait before closing would only slow every frame of
+        # an animation down without separating anything.
         self.assertEqual(
             sleep_mock.call_args_list,
-            [call(RGB_REPORT_DELAY_SECONDS)] * 3,
+            [call(RGB_REPORT_DELAY_SECONDS)] * 2,
         )
         close_mock.assert_called_once_with(42)
 
@@ -374,6 +380,113 @@ class StaticPresetTests(unittest.TestCase):
                 # A round trip through the stored document must not alter it.
                 restored = rgb_configuration_from_document(configuration.to_dict())
                 self.assertEqual(restored, configuration)
+
+
+class ReportSequenceTests(unittest.TestCase):
+    def test_an_enabled_configuration_selects_profile_colours_and_brightness(self) -> None:
+        reports = reports_for(solid_rgb_configuration(RgbColor(10, 20, 30), 60))
+
+        self.assertEqual([report[1] for report in reports], [0xC8, 0xCB, 0xCE])
+
+    def test_a_disabled_configuration_uses_the_off_sequence(self) -> None:
+        reports = reports_for(RgbConfiguration(False, 60, (RgbColor(10, 20, 30),) * RGB_ZONE_COUNT))
+
+        self.assertEqual([report[1] for report in reports], [0xC8, 0xCB])
+
+    def test_zero_brightness_is_off_rather_than_a_black_frame(self) -> None:
+        reports = reports_for(RgbConfiguration(True, 0, (RgbColor(10, 20, 30),) * RGB_ZONE_COUNT))
+
+        self.assertEqual([report[1] for report in reports], [0xC8, 0xCB])
+
+    def test_an_animation_frame_is_only_the_colour_report(self) -> None:
+        """Profile and brightness are set once per session, not per frame."""
+
+        reports = zone_reports_for((RgbColor(1, 2, 3),) * RGB_ZONE_COUNT)
+
+        self.assertEqual([report[1] for report in reports], [0xCB])
+        self.assertEqual(len(reports[0]), RGB_FEATURE_REPORT_SIZE)
+
+
+class RgbSessionTests(unittest.TestCase):
+    @patch("legion_control.rgb.time.sleep")
+    @patch("legion_control.rgb.os.close")
+    @patch("legion_control.rgb.fcntl.ioctl", return_value=RGB_FEATURE_REPORT_SIZE)
+    @patch("legion_control.rgb.os.open", return_value=42)
+    @patch("legion_control.rgb._validate_open_device")
+    def test_identity_is_proved_once_and_the_descriptor_is_reused(
+        self,
+        validate_mock,
+        open_mock,
+        ioctl_mock,
+        close_mock,
+        _sleep_mock,
+    ) -> None:
+        frame = zone_reports_for((RgbColor(1, 2, 3),) * RGB_ZONE_COUNT)
+
+        session = RgbSession(Path("/dev/hidraw2"))
+        session.send(frame)
+        session.send(frame)
+        session.close()
+
+        open_mock.assert_called_once()
+        validate_mock.assert_called_once_with(42)
+        self.assertEqual(ioctl_mock.call_count, 2)
+        close_mock.assert_called_once_with(42)
+
+    @patch("legion_control.rgb.os.close")
+    @patch("legion_control.rgb.os.open", return_value=42)
+    @patch("legion_control.rgb._validate_open_device", side_effect=OSError("otro teclado"))
+    def test_a_controller_that_fails_validation_is_closed_again(
+        self,
+        _validate_mock,
+        _open_mock,
+        close_mock,
+    ) -> None:
+        with self.assertRaises(OSError):
+            RgbSession(Path("/dev/hidraw2"))
+
+        close_mock.assert_called_once_with(42)
+
+    @patch("legion_control.rgb.os.close")
+    @patch("legion_control.rgb.fcntl.ioctl", return_value=RGB_FEATURE_REPORT_SIZE)
+    @patch("legion_control.rgb.os.open", return_value=42)
+    @patch("legion_control.rgb._validate_open_device")
+    def test_a_closed_session_refuses_further_frames(
+        self,
+        _validate_mock,
+        _open_mock,
+        _ioctl_mock,
+        _close_mock,
+    ) -> None:
+        session = RgbSession(Path("/dev/hidraw2"))
+        session.close()
+
+        with self.assertRaises(OSError):
+            session.send(zone_reports_for((RgbColor(1, 2, 3),) * RGB_ZONE_COUNT))
+
+    @patch("legion_control.rgb.os.close")
+    @patch("legion_control.rgb.os.open", return_value=42)
+    @patch("legion_control.rgb._validate_open_device")
+    def test_closing_twice_does_not_close_a_reused_descriptor_number(
+        self,
+        _validate_mock,
+        _open_mock,
+        close_mock,
+    ) -> None:
+        session = RgbSession(Path("/dev/hidraw2"))
+        session.close()
+        session.close()
+
+        close_mock.assert_called_once_with(42)
+
+    def test_a_session_only_opens_for_the_supported_product(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "sys/devices/virtual/dmi/id").mkdir(parents=True)
+            (root / "sys/devices/virtual/dmi/id/product_name").write_text("OTHER\n")
+
+            with self.assertRaises(Exception):
+                LegionRgbHardware(root).open_session()
 
 
 if __name__ == "__main__":

@@ -4,6 +4,34 @@ All notable changes to Legion Control are documented here. The project follows
 [Semantic Versioning](https://semver.org/) while the public API and hardware
 support surface mature.
 
+## 0.8.0 — 2026-08-12
+
+### Added
+
+- Six animated keyboard effects: breathing, rainbow, wave, comet, fire and
+  aurora, with a speed control and a base colour for the three that use one.
+  Every frame is the physically verified static report sequence; no firmware
+  animation, effect, speed or direction command is claimed or sent.
+- `legion-control-rgbd`, a root service that holds the controller open and
+  paints frames, because authorizing each frame through PolicyKit would spawn a
+  privileged process 20 times a second. It runs with a closed device policy
+  allowing only `char-hidraw`, no capabilities, no network, and a start limit.
+- The running effect in the Doctor report.
+- A held-open RGB session, so identity checks run once per session instead of
+  once per frame, and animation frames carry only the colour report.
+
+### Changed
+
+- The effect service stops before any static write, since two writers on one
+  controller would fight over the keyboard. Choosing a preset, editing a zone,
+  or turning lighting off all end the animation.
+- Brightness and the lighting switch apply to whichever mode is running, so
+  adjusting brightness during an effect no longer stops it.
+- Package upgrades restore a running effect, the way they already restored an
+  active fan service.
+- The report writer spaces consecutive reports by the validated delay instead
+  of also waiting after the last one, which only slowed every frame down.
+
 ## 0.7.0 — 2026-08-12
 
 ### Added

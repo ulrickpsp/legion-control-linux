@@ -1,4 +1,4 @@
-.TH LEGION-CONTROL 1 "2026-08-11" "Legion Control 0.7.0" "User Commands"
+.TH LEGION-CONTROL 1 "2026-08-12" "Legion Control 0.8.0" "User Commands"
 .SH NAME
 legion-control \- native controls for the supported Lenovo Legion 83LU
 .SH SYNOPSIS
@@ -52,6 +52,10 @@ Root-owned active fan policy.
 .TP
 .I /var/lib/legion-control/rgb-config.json
 Last RGB configuration accepted by the helper; not semantic hardware readback.
+.TP
+.I /var/lib/legion-control/rgb-effect.json
+Root-owned animated effect. When one is enabled, legion-control-rgbd renders it
+locally as successive static frames; no firmware animation command is sent.
 .TP
 .I ~/.config/legion-control/scenes.json
 User-owned quick scenes.

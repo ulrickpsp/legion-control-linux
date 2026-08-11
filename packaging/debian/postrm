@@ -8,7 +8,8 @@ fi
 if [ "$1" = "purge" ]; then
     rm -f \
         /var/lib/legion-control/fan-config.json \
-        /var/lib/legion-control/rgb-config.json
+        /var/lib/legion-control/rgb-config.json \
+        /var/lib/legion-control/rgb-effect.json
     rmdir /var/lib/legion-control 2>/dev/null || true
 fi
 

@@ -8,15 +8,21 @@ import threading
 from collections.abc import Callable
 from typing import Any, Final
 
-import cairo  # Registers cairo.Context for PyGObject drawing callbacks.
+import cairo  # pyright: ignore[reportMissingImports]  # Registers cairo.Context.
 import gi
 
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 gi.require_foreign("cairo")
 
-from gi.repository import Adw, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+from legion_control.alerts import ThermalAlertController  # noqa: E402
+from legion_control.automation import (  # noqa: E402
+    AutomationStore,
+    PowerSourceAutomation,
+    default_automation_path,
+)
 from legion_control.client import ControlPort, LocalControlClient  # noqa: E402
 from legion_control.domain import (  # noqa: E402
     DEFAULT_CURVE,
@@ -27,6 +33,16 @@ from legion_control.domain import (  # noqa: E402
     FanMode,
     FanPolicy,
 )
+from legion_control.history import (  # noqa: E402
+    TelemetryArchive,
+    default_telemetry_path,
+)
+from legion_control.i18n import (  # noqa: E402
+    LanguageStore,
+    configure_startup_language,
+    localize_widget_tree,
+    translate,
+)
 from legion_control.linux import SysfsHardware  # noqa: E402
 from legion_control.mock import MockControlClient  # noqa: E402
 from legion_control.power import (  # noqa: E402
@@ -34,11 +50,23 @@ from legion_control.power import (  # noqa: E402
     PowerLimitBounds,
     PowerLimitCapabilities,
 )
-from legion_control.scenes import SceneStore, default_scene_path  # noqa: E402
+from legion_control.scenes import (  # noqa: E402
+    SceneStore,
+    apply_scene,
+    default_scene_path,
+    load_scenes_for_status,
+)
+from legion_control.ui_automation import AutomationPage  # noqa: E402
+from legion_control.ui_doctor import DoctorPage  # noqa: E402
 from legion_control.ui_history import TelemetryHistoryPanel  # noqa: E402
 from legion_control.ui_lighting import LightingPage  # noqa: E402
-from legion_control.ui_scenes import ScenePanel  # noqa: E402
-from legion_control.ui_style import install_css  # noqa: E402
+from legion_control.ui_language import LanguagePage  # noqa: E402
+from legion_control.ui_scenes import (  # noqa: E402
+    SCENE_LABELS,
+    ScenePanel,
+)
+from legion_control.ui_style import install_css, widen_content  # noqa: E402
+from legion_control.tray import TrayController  # noqa: E402
 
 
 APPLICATION_ID: Final = "io.github.ulrickpsp.LegionControl"
@@ -57,6 +85,8 @@ PROFILE_LABELS: Final = (
     "Rendimiento máximo",
     "Personalizado",
 )
+BRAND_SPACING: Final = 9
+HEADER_SIDE_PADDING: Final = 24
 MODE_VALUES: Final = (FanMode.AUTO, FanMode.FIXED, FanMode.CURVE)
 MODE_LABELS: Final = ("Automático", "RPM fija", "Curva")
 
@@ -79,8 +109,19 @@ def _value_row(title: str, subtitle: str = "") -> tuple[Adw.ActionRow, Gtk.Label
     return row, value
 
 
-def _spin_with_unit(spin: Gtk.SpinButton, unit_text: str) -> Gtk.Box:
+def _set_accessible_label(widget: Gtk.Widget, label: str) -> None:
+    """Name a control that has no visible label of its own."""
+
+    widget.update_property([Gtk.AccessibleProperty.LABEL], [label])
+
+
+def _spin_with_unit(
+    spin: Gtk.SpinButton,
+    unit_text: str,
+    accessible_label: str,
+) -> Gtk.Box:
     box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    _set_accessible_label(spin, f"{accessible_label} en {unit_text}")
     box.append(spin)
     unit = Gtk.Label(label=unit_text)
     unit.add_css_class("dim-label")
@@ -130,14 +171,17 @@ def _set_status_tone(widget: Gtk.Widget, tone: str) -> None:
     widget.add_css_class(tone)
 
 
-def _button_content(label: str, icon_name: str) -> Gtk.Box:
+def _set_button_content(button: Gtk.Button, label: str, icon_name: str) -> None:
+    """Give a button an icon plus text, and the same text as accessible name."""
+
     content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=7)
     content.set_halign(Gtk.Align.CENTER)
     icon = Gtk.Image.new_from_icon_name(icon_name)
     icon.set_pixel_size(16)
     content.append(icon)
     content.append(Gtk.Label(label=label))
-    return content
+    button.set_child(content)
+    _set_accessible_label(button, label)
 
 
 class HomePage(Adw.PreferencesPage):
@@ -149,6 +193,7 @@ class HomePage(Adw.PreferencesPage):
         scene_store: SceneStore | None = None,
         show_error: Callable[[str], None] | None = None,
         show_message: Callable[[str], None] | None = None,
+        telemetry_archive: TelemetryArchive | None = None,
     ) -> None:
         super().__init__()
         self.add_css_class("control-page")
@@ -195,7 +240,11 @@ class HomePage(Adw.PreferencesPage):
         self.add(thermal_group)
 
         history_group = Adw.PreferencesGroup()
-        self._history_panel = TelemetryHistoryPanel()
+        self._history_panel = TelemetryHistoryPanel(
+            telemetry_archive,
+            show_error=show_error,
+            show_message=show_message,
+        )
         history_group.add(self._history_panel)
         self.add(history_group)
 
@@ -205,7 +254,9 @@ class HomePage(Adw.PreferencesPage):
         self._profile_row = Adw.ComboRow()
         self._profile_row.set_title("Perfil térmico")
         self._profile_row.set_subtitle("Esperando lectura del kernel")
-        self._profile_row.set_model(Gtk.StringList.new(PROFILE_LABELS))
+        self._profile_row.set_model(
+            Gtk.StringList.new(tuple(translate(label) for label in PROFILE_LABELS))
+        )
         self._profile_row.add_prefix(
             _prefix_icon("power-profile-balanced-symbolic", "Perfil térmico")
         )
@@ -231,15 +282,16 @@ class HomePage(Adw.PreferencesPage):
         self._service_row, self._service_value = _value_row(
             "Control de curva", "Servicio térmico local"
         )
-        self._battery_row.add_prefix(
-            _prefix_icon("battery-level-80-charging-symbolic", "Batería")
-        )
+        self._battery_row.add_prefix(_prefix_icon("battery-level-80-charging-symbolic", "Batería"))
         self._service_row.add_prefix(
             _prefix_icon("weather-tornado-symbolic", "Control de ventilación")
         )
         system_group.add(self._battery_row)
         system_group.add(self._service_row)
         self.add(system_group)
+
+    def record_history_event(self, label: str) -> None:
+        self._history_panel.record_event(label)
 
     def update_status(self, status: dict[str, object]) -> None:
         self._history_panel.update_status(status)
@@ -262,35 +314,37 @@ class HomePage(Adw.PreferencesPage):
         ]
         hottest = max(temperatures, default=None)
         if hottest is None:
-            self._health_label.set_label("Lecturas incompletas")
+            self._health_label.set_label(translate("Lecturas incompletas"))
             self._health_icon.set_from_icon_name("dialog-warning-symbolic")
             _set_status_tone(self._health_pill, "status-warm")
         elif hottest >= 92:
-            self._health_label.set_label("Temperatura crítica")
+            self._health_label.set_label(translate("Temperatura crítica"))
             self._health_icon.set_from_icon_name("dialog-warning-symbolic")
             _set_status_tone(self._health_pill, "status-critical")
         elif hottest >= 80:
-            self._health_label.set_label("Temperatura elevada")
+            self._health_label.set_label(translate("Temperatura elevada"))
             self._health_icon.set_from_icon_name("dialog-warning-symbolic")
             _set_status_tone(self._health_pill, "status-warm")
         else:
-            self._health_label.set_label("Estado estable")
+            self._health_label.set_label(translate("Estado estable"))
             self._health_icon.set_from_icon_name("emblem-ok-symbolic")
             _set_status_tone(self._health_pill, "status-stable")
         battery = status.get("battery_percent")
         battery_status = _battery_status(status.get("battery_status"))
         self._battery_value.set_label(
-            f"{battery}% · {battery_status}" if isinstance(battery, int) else "No disponible"
+            f"{battery}% · {battery_status}"
+            if isinstance(battery, int)
+            else translate("No disponible")
         )
         service_active = bool(status.get("fan_service_active"))
-        self._service_value.set_label("Activo" if service_active else "Firmware")
+        self._service_value.set_label(translate("Activo") if service_active else "Firmware")
         profile = status.get("profile")
         profile_label = (
-            PROFILE_LABELS[PROFILE_VALUES.index(profile)]
+            _profile_label(profile)
             if profile in PROFILE_VALUES
-            else "Perfil desconocido"
+            else translate("Perfil desconocido")
         )
-        owner = "Curva activa" if service_active else "Control firmware"
+        owner = translate("Curva activa") if service_active else translate("Control firmware")
         self._hero_context.set_label(f"{profile_label} · {owner}")
         if profile in PROFILE_VALUES:
             if self._pending_profile is None or profile == self._pending_profile:
@@ -299,13 +353,13 @@ class HomePage(Adw.PreferencesPage):
                 self._pending_profile = None
             if self._pending_profile is None:
                 self._profile_row.set_subtitle(
-                    f"Confirmado por el kernel: {profile_label}"
+                    translate("Confirmado por el kernel: {profile}", profile=profile_label)
                 )
         if self._pending_profile is not None:
-            pending_label = PROFILE_LABELS[
-                PROFILE_VALUES.index(self._pending_profile)
-            ]
-            self._profile_row.set_subtitle(f"Confirmando {pending_label}…")
+            pending_label = _profile_label(self._pending_profile)
+            self._profile_row.set_subtitle(
+                translate("Confirmando {profile}…", profile=pending_label)
+            )
         self._profile_row.set_sensitive(
             bool(self._available_profiles) and self._pending_profile is None
         )
@@ -322,9 +376,8 @@ class HomePage(Adw.PreferencesPage):
             return
         self._pending_profile = profile
         self._profile_row.set_sensitive(False)
-        self._profile_row.set_subtitle(
-            f"Confirmando {PROFILE_LABELS[index]}…"
-        )
+        profile_label = _profile_label(PROFILE_VALUES[index])
+        self._profile_row.set_subtitle(translate("Confirmando {profile}…", profile=profile_label))
 
         def finish() -> None:
             self._request_refresh()
@@ -336,7 +389,7 @@ class HomePage(Adw.PreferencesPage):
 
         self._run_mutation(
             lambda: self._client.set_profile(profile),
-            f"Perfil cambiado a {PROFILE_LABELS[index]}.",
+            translate("Perfil cambiado a {profile}.", profile=profile_label),
             finish,
             restore,
         )
@@ -390,16 +443,10 @@ class FanPage(Adw.PreferencesPage):
         safety_group = Adw.PreferencesGroup()
         restore_row = Adw.ActionRow()
         restore_row.set_title("Salida segura: control firmware")
-        restore_row.set_subtitle(
-            "Detiene el servicio y devuelve ambos objetivos a automático"
-        )
-        restore_row.add_prefix(
-            _prefix_icon("security-high-symbolic", "Recuperación segura")
-        )
+        restore_row.set_subtitle("Detiene el servicio y devuelve ambos objetivos a automático")
+        restore_row.add_prefix(_prefix_icon("security-high-symbolic", "Recuperación segura"))
         self._restore_button = Gtk.Button()
-        self._restore_button.set_child(
-            _button_content("Restaurar firmware", "view-refresh-symbolic")
-        )
+        _set_button_content(self._restore_button, "Restaurar firmware", "view-refresh-symbolic")
         self._restore_button.add_css_class("safe-action")
         self._restore_button.set_valign(Gtk.Align.CENTER)
         self._restore_button.connect("clicked", self._on_restore_clicked)
@@ -410,17 +457,13 @@ class FanPage(Adw.PreferencesPage):
 
         self._power_group = Adw.PreferencesGroup()
         self._power_group.set_title("Potencia Custom")
-        self._power_group.set_description(
-            "CPU y ventilación se aplican juntas en Personalizado"
-        )
+        self._power_group.set_description("CPU y ventilación se aplican juntas en Personalizado")
         self._power_group.set_visible(False)
 
         sustained_row = Adw.ActionRow()
         sustained_row.set_title("Potencia sostenida")
         sustained_row.set_subtitle("Límite estable de CPU (PPT PL1 / SPL)")
-        sustained_row.add_prefix(
-            _prefix_icon("speedometer-symbolic", "Potencia sostenida")
-        )
+        sustained_row.add_prefix(_prefix_icon("speedometer-symbolic", "Potencia sostenida"))
         self._sustained_adjustment = Gtk.Adjustment(
             value=70,
             lower=50,
@@ -428,20 +471,16 @@ class FanPage(Adw.PreferencesPage):
             step_increment=1,
             page_increment=5,
         )
-        self._sustained_spin = Gtk.SpinButton(
-            adjustment=self._sustained_adjustment
-        )
+        self._sustained_spin = Gtk.SpinButton(adjustment=self._sustained_adjustment)
         self._sustained_spin.set_digits(0)
         self._sustained_spin.set_numeric(True)
-        sustained_row.add_suffix(_spin_with_unit(self._sustained_spin, "W"))
+        sustained_row.add_suffix(_spin_with_unit(self._sustained_spin, "W", "Potencia sostenida"))
         self._power_group.add(sustained_row)
 
         slow_row = Adw.ActionRow()
         slow_row.set_title("Potencia lenta")
         slow_row.set_subtitle("Techo temporal de CPU (PPT PL2 / SPPT)")
-        slow_row.add_prefix(
-            _prefix_icon("power-profile-performance-symbolic", "Potencia lenta")
-        )
+        slow_row.add_prefix(_prefix_icon("power-profile-performance-symbolic", "Potencia lenta"))
         self._slow_adjustment = Gtk.Adjustment(
             value=125,
             lower=60,
@@ -452,14 +491,10 @@ class FanPage(Adw.PreferencesPage):
         self._slow_spin = Gtk.SpinButton(adjustment=self._slow_adjustment)
         self._slow_spin.set_digits(0)
         self._slow_spin.set_numeric(True)
-        slow_row.add_suffix(_spin_with_unit(self._slow_spin, "W"))
+        slow_row.add_suffix(_spin_with_unit(self._slow_spin, "W", "Potencia lenta"))
         self._power_group.add(slow_row)
-        self._sustained_adjustment.connect(
-            "value-changed", self._on_power_value_changed
-        )
-        self._slow_adjustment.connect(
-            "value-changed", self._on_power_value_changed
-        )
+        self._sustained_adjustment.connect("value-changed", self._on_power_value_changed)
+        self._slow_adjustment.connect("value-changed", self._on_power_value_changed)
         self.add(self._power_group)
 
         self._editor_group = Adw.PreferencesGroup()
@@ -481,12 +516,10 @@ class FanPage(Adw.PreferencesPage):
             "speedometer-symbolic",
             "weather-tornado-symbolic",
         )
-        for mode, label, icon_name in zip(
-            MODE_VALUES, MODE_LABELS, mode_icons, strict=True
-        ):
+        for mode, label, icon_name in zip(MODE_VALUES, MODE_LABELS, mode_icons, strict=True):
             button = Gtk.ToggleButton()
             button.set_hexpand(True)
-            button.set_child(_button_content(label, icon_name))
+            _set_button_content(button, translate(label), icon_name)
             button.connect("toggled", self._on_mode_button_toggled, mode)
             self._mode_selector.append(button)
             self._mode_buttons[mode] = button
@@ -550,10 +583,12 @@ class FanPage(Adw.PreferencesPage):
         )
         self._fixed_scale.set_draw_value(False)
         self._fixed_scale.set_hexpand(True)
+        _set_accessible_label(self._fixed_scale, "Velocidad fija en RPM")
         self._fixed_spin = Gtk.SpinButton(adjustment=self._fixed_adjustment)
         self._fixed_spin.set_digits(0)
         self._fixed_spin.set_numeric(True)
         self._fixed_spin.set_accessible_role(Gtk.AccessibleRole.SPIN_BUTTON)
+        _set_accessible_label(self._fixed_spin, "Velocidad fija en RPM")
         self._fixed_adjustment.connect("value-changed", self._on_fixed_value_changed)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row.append(self._fixed_scale)
@@ -575,9 +610,7 @@ class FanPage(Adw.PreferencesPage):
         self._graph.set_hexpand(True)
         self._graph.set_draw_func(self._draw_curve)
         self._graph.set_accessible_role(Gtk.AccessibleRole.IMG)
-        self._graph.set_tooltip_text(
-            "Curva de temperatura y RPM con el punto de trabajo actual"
-        )
+        self._graph.set_tooltip_text("Curva de temperatura y RPM con el punto de trabajo actual")
         self._graph.add_css_class("curve-canvas")
         box.append(self._graph)
 
@@ -609,20 +642,30 @@ class FanPage(Adw.PreferencesPage):
             temperature_spin.connect("value-changed", self._on_curve_value_changed)
             rpm_spin.connect("value-changed", self._on_curve_value_changed)
             grid.attach(point_label, 0, index, 1, 1)
-            grid.attach(_spin_with_unit(temperature_spin, "°C"), 1, index, 1, 1)
-            grid.attach(_spin_with_unit(rpm_spin, "RPM"), 2, index, 1, 1)
+            grid.attach(
+                _spin_with_unit(temperature_spin, "°C", f"Punto {index}: temperatura"),
+                1,
+                index,
+                1,
+                1,
+            )
+            grid.attach(
+                _spin_with_unit(rpm_spin, "RPM", f"Punto {index}: objetivo"),
+                2,
+                index,
+                1,
+                1,
+            )
             self._point_spins.append((temperature_spin, rpm_spin))
         box.append(grid)
         return box
 
     def update_status(self, status: dict[str, object]) -> None:
         capabilities = _dictionary(status.get("capabilities"))
-        power_capabilities = _power_capabilities_from_document(
-            capabilities.get("power_limits")
+        power_capabilities = _power_capabilities_from_document(capabilities.get("power_limits"))
+        self._power_control_available = (
+            bool(capabilities.get("power_control")) and power_capabilities is not None
         )
-        self._power_control_available = bool(
-            capabilities.get("power_control")
-        ) and power_capabilities is not None
         self._power_capabilities = power_capabilities
         self._power_group.set_visible(self._power_control_available)
         if power_capabilities is not None:
@@ -647,17 +690,15 @@ class FanPage(Adw.PreferencesPage):
                     except (KeyError, TypeError, ValueError):
                         pass
                     else:
-                        self._sustained_adjustment.set_value(
-                            limits.sustained_w
-                        )
+                        self._sustained_adjustment.set_value(limits.sustained_w)
                         self._slow_adjustment.set_value(limits.slow_w)
             self._refreshing = False
         minimum = capabilities.get("fan_minimum_rpm")
         maximum = capabilities.get("fan_maximum_rpm")
         step = capabilities.get("fan_step_rpm")
-        if all(type(value) is int for value in (minimum, maximum, step)):
+        if type(minimum) is int and type(maximum) is int and type(step) is int:
             try:
-                self._bounds = FanBounds(int(minimum), int(maximum), int(step))
+                self._bounds = FanBounds(minimum, maximum, step)
                 self._update_adjustment_bounds()
             except DomainError:
                 pass
@@ -682,9 +723,7 @@ class FanPage(Adw.PreferencesPage):
             )
             if type(value) is int and value > 0
         ]
-        self._target_value.set_label(
-            f"{max(target_values)} RPM" if target_values else "Firmware"
-        )
+        self._target_value.set_label(f"{max(target_values)} RPM" if target_values else "Firmware")
         self._fan_control_available = bool(capabilities.get("fan_control"))
         self._restore_button.set_sensitive(self._fan_control_available)
         policy = _dictionary(status.get("fan_policy"))
@@ -693,10 +732,10 @@ class FanPage(Adw.PreferencesPage):
         mode = str(policy.get("mode", "auto"))
         service_active = bool(status.get("fan_service_active"))
         if service_active and mode == FanMode.CURVE.value:
-            self._mode_status.set_label("Curva activa")
+            self._mode_status.set_label(translate("Curva activa"))
             _set_status_tone(self._mode_pill, "status-stable")
         elif service_active and mode == FanMode.FIXED.value:
-            self._mode_status.set_label("RPM fija")
+            self._mode_status.set_label(translate("RPM fija"))
             _set_status_tone(self._mode_pill, "status-warm")
         else:
             self._mode_status.set_label("Firmware")
@@ -721,9 +760,7 @@ class FanPage(Adw.PreferencesPage):
             self._fixed_adjustment.set_value(int(fixed))
         curve = document.get("curve")
         if isinstance(curve, list) and len(curve) == len(self._point_spins):
-            for item, (temperature_spin, rpm_spin) in zip(
-                curve, self._point_spins, strict=True
-            ):
+            for item, (temperature_spin, rpm_spin) in zip(curve, self._point_spins, strict=True):
                 if isinstance(item, dict):
                     temperature = item.get("temperature_c")
                     rpm = item.get("rpm")
@@ -755,14 +792,9 @@ class FanPage(Adw.PreferencesPage):
         adjustment.set_step_increment(bounds.step_w)
         adjustment.set_page_increment(max(bounds.step_w, 5))
 
-    def _on_mode_button_toggled(
-        self, button: Gtk.ToggleButton, mode: FanMode
-    ) -> None:
+    def _on_mode_button_toggled(self, button: Gtk.ToggleButton, mode: FanMode) -> None:
         if not button.get_active():
-            if not any(
-                candidate.get_active()
-                for candidate in self._mode_buttons.values()
-            ):
+            if not any(candidate.get_active() for candidate in self._mode_buttons.values()):
                 button.set_active(True)
             return
         for candidate in self._mode_buttons.values():
@@ -770,9 +802,9 @@ class FanPage(Adw.PreferencesPage):
                 candidate.set_active(False)
         self._editor_stack.set_visible_child_name(mode.value)
         labels = {
-            FanMode.AUTO: "Usar control automático",
-            FanMode.FIXED: "Aplicar RPM + potencia",
-            FanMode.CURVE: "Aplicar curva + potencia",
+            FanMode.AUTO: translate("Usar control automático"),
+            FanMode.FIXED: translate("Aplicar RPM + potencia"),
+            FanMode.CURVE: translate("Aplicar curva + potencia"),
         }
         self._apply_button.set_label(labels[mode])
         self._sync_power_group(mode)
@@ -783,7 +815,7 @@ class FanPage(Adw.PreferencesPage):
         self._restore_button.set_sensitive(False)
         self._run_mutation(
             self._client.restore_auto,
-            "Control devuelto al firmware.",
+            translate("Control devuelto al firmware."),
             self._finish_restore,
             self._restore_failed,
         )
@@ -795,29 +827,30 @@ class FanPage(Adw.PreferencesPage):
             policy = self._policy_from_editor()
             policy.validate_for(self._bounds)
             power_limits = self._power_limits_from_editor()
-            if (
-                policy.mode is not FanMode.AUTO
-                and self._power_capabilities is not None
-            ):
+            if policy.mode is not FanMode.AUTO and self._power_capabilities is not None:
                 power_limits.validate_for(self._power_capabilities)
         except (DomainError, ValueError) as error:
             root = self.get_root()
             if isinstance(root, MainWindow):
                 root.show_error(str(error))
             return
+
+        def apply_fans_and_power() -> dict[str, object]:
+            return self._client.set_custom_configuration(policy, power_limits)
+
+        def apply_fans_only() -> dict[str, object]:
+            return self._client.set_fan_policy(policy)
+
         if policy.mode is FanMode.AUTO:
             operation = self._client.restore_auto
         elif self._power_capabilities is not None:
-            operation = lambda: self._client.set_custom_configuration(
-                policy,
-                power_limits,
-            )
+            operation = apply_fans_and_power
         else:
-            operation = lambda: self._client.set_fan_policy(policy)
+            operation = apply_fans_only
         message = (
-            "Control devuelto al firmware."
+            translate("Control devuelto al firmware.")
             if policy.mode is FanMode.AUTO
-            else "Configuración de ventilación aplicada."
+            else translate("Configuración de ventilación aplicada.")
         )
         self._apply_button.set_sensitive(False)
         self._run_mutation(
@@ -829,11 +862,7 @@ class FanPage(Adw.PreferencesPage):
 
     def _policy_from_editor(self) -> FanPolicy:
         mode = next(
-            (
-                candidate
-                for candidate, button in self._mode_buttons.items()
-                if button.get_active()
-            ),
+            (candidate for candidate, button in self._mode_buttons.items() if button.get_active()),
             FanMode.AUTO,
         )
         points = tuple(
@@ -869,26 +898,22 @@ class FanPage(Adw.PreferencesPage):
             self._set_editor_dirty(True)
 
     def _sync_power_group(self, mode: FanMode) -> None:
-        self._power_group.set_sensitive(
-            self._power_control_available and mode is not FanMode.AUTO
-        )
+        self._power_group.set_sensitive(self._power_control_available and mode is not FanMode.AUTO)
 
     def _set_editor_dirty(self, dirty: bool) -> None:
         self._editor_dirty = dirty
         if dirty:
             self._editor_group.set_description(
-                "Cambios sin aplicar · pulsa Aplicar para activarlos"
+                translate("Cambios sin aplicar · pulsa Aplicar para activarlos")
             )
         else:
             self._editor_group.set_description(
-                "Curva con filtrado e histéresis · continúa aunque cierres la ventana"
+                translate("Curva con filtrado e histéresis · continúa aunque cierres la ventana")
             )
         self._sync_apply_button()
 
     def _sync_apply_button(self) -> None:
-        self._apply_button.set_sensitive(
-            self._fan_control_available and self._editor_dirty
-        )
+        self._apply_button.set_sensitive(self._fan_control_available and self._editor_dirty)
 
     def _finish_apply(self) -> None:
         self._set_editor_dirty(False)
@@ -904,15 +929,15 @@ class FanPage(Adw.PreferencesPage):
     def _restore_failed(self) -> None:
         self._restore_button.set_sensitive(self._fan_control_available)
 
-    def _draw_curve(
-        self, _area: Gtk.DrawingArea, context: Any, width: int, height: int
-    ) -> None:
+    def _draw_curve(self, _area: Gtk.DrawingArea, context: Any, width: int, height: int) -> None:
         dark = Adw.StyleManager.get_default().get_dark()
         foreground = (0.94, 0.95, 0.97) if dark else (0.12, 0.13, 0.15)
         muted = (0.59, 0.61, 0.66) if dark else (0.43, 0.45, 0.49)
         grid = (0.72, 0.74, 0.78) if dark else (0.20, 0.22, 0.26)
         accent = (0.90, 0.20, 0.25)
-        live = (0.96, 0.62, 0.16)
+        # The live marker also prints the current temperature, so it needs the
+        # 4.5:1 text contrast floor on whichever background is in use.
+        live = (0.96, 0.62, 0.16) if dark else (0.706, 0.325, 0.035)
         margin_left, margin_right = 54, 18
         margin_top, margin_bottom = 26, 34
         graph_width = max(1, width - margin_left - margin_right)
@@ -945,18 +970,15 @@ class FanPage(Adw.PreferencesPage):
 
         def position(temperature_c: int, rpm: int) -> tuple[float, float]:
             x = margin_left + ((temperature_c - 20) / 80) * graph_width
-            fraction = (
-                (rpm - self._bounds.minimum_rpm)
-                / (self._bounds.maximum_rpm - self._bounds.minimum_rpm)
+            fraction = (rpm - self._bounds.minimum_rpm) / (
+                self._bounds.maximum_rpm - self._bounds.minimum_rpm
             )
             y = margin_top + graph_height - fraction * graph_height
             return x, y
 
-        positions = [
-            position(point.temperature_c, point.rpm) for point in curve.points
-        ]
+        positions = [position(point.temperature_c, point.rpm) for point in curve.points]
         first_x, first_y = positions[0]
-        last_x, last_y = positions[-1]
+        last_x = positions[-1][0]
         context.move_to(first_x, margin_top + graph_height)
         context.line_to(first_x, first_y)
         for x, y in positions[1:]:
@@ -1105,12 +1127,12 @@ class DevicePage(Adw.PreferencesPage):
         product_version = str(capabilities.get("product_version") or "Lenovo Legion")
         product = str(capabilities.get("product") or "modelo desconocido")
         self._device_name.set_label(product_version)
-        self._device_model.set_label(f"Producto {product}")
+        self._device_model.set_label(f"{translate('Producto')} {product}")
         if bool(capabilities.get("supported")):
-            self._device_status.set_label("Compatible")
+            self._device_status.set_label(translate("Compatible"))
             _set_status_tone(self._device_pill, "status-stable")
         else:
-            self._device_status.set_label("Solo lectura")
+            self._device_status.set_label(translate("Solo lectura"))
             _set_status_tone(self._device_pill, "status-warm")
         self._refreshing = True
         for feature, row in self._rows.items():
@@ -1120,9 +1142,7 @@ class DevicePage(Adw.PreferencesPage):
                 row.set_active(value)
         self._refreshing = False
 
-    def _on_feature_changed(
-        self, row: Adw.SwitchRow, _parameter: object, feature: str
-    ) -> None:
+    def _on_feature_changed(self, row: Adw.SwitchRow, _parameter: object, feature: str) -> None:
         if self._refreshing:
             return
         desired = row.get_active()
@@ -1140,30 +1160,40 @@ class DevicePage(Adw.PreferencesPage):
 
         self._run_mutation(
             lambda: self._client.set_feature(feature, desired),
-            "Función actualizada.",
+            translate("Función actualizada."),
             finish,
             restore_row,
         )
 
 
 class MainWindow(Adw.ApplicationWindow):
-    def __init__(self, application: Adw.Application, client: ControlPort) -> None:
+    def __init__(
+        self,
+        application: Adw.Application,
+        client: ControlPort,
+        tray: TrayController,
+    ) -> None:
         super().__init__(application=application)
         self.set_title("Legion Control")
         self.set_default_size(980, 720)
         self.set_size_request(820, 600)
         self._client = client
+        self._tray = tray
+        self.connect("close-request", self._on_close_request)
         self._refresh_in_progress = False
         self._refresh_pending = False
         self._refresh_generation = 0
         self._mutations_in_progress = 0
+        self._latest_status: dict[str, object] | None = None
+        self._thermal_alerts = ThermalAlertController()
+        self._power_source_automation = PowerSourceAutomation()
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.add_css_class("app-shell")
         header = Adw.HeaderBar()
         header.add_css_class("app-header")
 
-        brand = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+        brand = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=BRAND_SPACING)
         brand_icon = Gtk.Image.new_from_icon_name("weather-tornado-symbolic")
         brand_icon.set_pixel_size(18)
         brand_icon.add_css_class("brand-mark")
@@ -1174,10 +1204,11 @@ class MainWindow(Adw.ApplicationWindow):
         header.pack_start(brand)
 
         self._view_stack = Adw.ViewStack()
-        switcher = Adw.ViewSwitcher()
-        switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
-        switcher.set_stack(self._view_stack)
-        header.set_title_widget(switcher)
+        # Kept referenced: a breakpoint unparents it to move navigation below.
+        self._switcher = Adw.ViewSwitcher()
+        self._switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
+        self._switcher.set_stack(self._view_stack)
+        header.set_title_widget(self._switcher)
 
         self._busy_box = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL,
@@ -1192,6 +1223,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._busy_box.append(busy_label)
         self._busy_box.set_visible(False)
         header.pack_end(self._busy_box)
+
         root.append(header)
 
         self._banner = Adw.Banner()
@@ -1201,15 +1233,21 @@ class MainWindow(Adw.ApplicationWindow):
         self._toast_overlay.set_child(self._view_stack)
         root.append(self._toast_overlay)
         self._toast_overlay.set_vexpand(True)
+
+        self._switcher_bar = Adw.ViewSwitcherBar()
+        self._switcher_bar.set_stack(self._view_stack)
+        root.append(self._switcher_bar)
         self.set_content(root)
 
+        self._scene_store = SceneStore(default_scene_path())
         self._home_page = HomePage(
             client,
             self.run_mutation,
             self.request_refresh,
-            SceneStore(default_scene_path()),
+            self._scene_store,
             self.show_error,
             self.show_message,
+            TelemetryArchive(default_telemetry_path()),
         )
         self._fan_page = FanPage(client, self.run_mutation, self.request_refresh)
         self._lighting_page = LightingPage(
@@ -1219,28 +1257,125 @@ class MainWindow(Adw.ApplicationWindow):
             self.show_error,
         )
         self._device_page = DevicePage(client, self.run_mutation, self.request_refresh)
-        self._view_stack.add_titled_with_icon(
-            self._home_page, "home", "Inicio", "view-grid-symbolic"
+        self._automation_page = AutomationPage(
+            AutomationStore(default_automation_path()),
+            self.show_error,
+            self.show_message,
+        )
+        self._doctor_page = DoctorPage(self.show_error, self.show_message)
+        self._language_page = LanguagePage(
+            LanguageStore(),
+            self.show_message,
+            self.show_error,
         )
         self._view_stack.add_titled_with_icon(
-            self._fan_page, "fans", "Ventilación", "weather-tornado-symbolic"
+            self._home_page, "home", translate("Inicio"), "view-grid-symbolic"
+        )
+        self._view_stack.add_titled_with_icon(
+            self._fan_page,
+            "fans",
+            translate("Ventilación"),
+            "weather-tornado-symbolic",
         )
         self._view_stack.add_titled_with_icon(
             self._lighting_page,
             "lighting",
-            "Iluminación",
+            translate("Iluminación"),
             "preferences-color-symbolic",
         )
         self._view_stack.add_titled_with_icon(
-            self._device_page, "device", "Dispositivo", "preferences-system-symbolic"
+            self._device_page,
+            "device",
+            translate("Dispositivo"),
+            "preferences-system-symbolic",
+        )
+        self._view_stack.add_titled_with_icon(
+            self._automation_page,
+            "automation",
+            translate("Automatización"),
+            "preferences-system-time-symbolic",
+        )
+        self._view_stack.add_titled_with_icon(
+            self._doctor_page, "doctor", translate("Doctor"), "system-search-symbolic"
+        )
+        self._view_stack.add_titled_with_icon(
+            self._language_page,
+            "language",
+            translate("Idioma"),
+            "preferences-desktop-locale-symbolic",
+        )
+        localize_widget_tree(root)
+        widen_content(root)
+        self._navigation_breakpoints_installed = False
+        self.connect(
+            "map",
+            lambda _window: self._install_navigation_breakpoints(brand, brand_label, busy_label),
         )
         if os.environ.get("LEGION_CONTROL_MOCK") == "1":
             requested_view = os.environ.get("LEGION_CONTROL_VIEW", "home")
-            if requested_view in {"home", "fans", "lighting", "device"}:
+            if requested_view in {
+                "home",
+                "fans",
+                "lighting",
+                "device",
+                "automation",
+                "doctor",
+                "language",
+            }:
                 self._view_stack.set_visible_child_name(requested_view)
 
         self.request_refresh()
         GLib.timeout_add(REFRESH_INTERVAL_MS, self._refresh_timer)
+
+    def _install_navigation_breakpoints(
+        self,
+        brand: Gtk.Box,
+        brand_label: Gtk.Label,
+        busy_label: Gtk.Label,
+    ) -> None:
+        """Degrade the header in two measured steps instead of truncating tabs.
+
+        Both thresholds are derived from the widths the header parts really ask
+        for once every view is registered, so adding a tab or switching language
+        moves them too. Only one breakpoint applies at a time, so the narrow one
+        repeats the compact setters.
+        """
+
+        if self._navigation_breakpoints_installed:
+            return
+        self._navigation_breakpoints_installed = True
+        full_width, compact_width = self._header_thresholds(brand, brand_label)
+
+        compact = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(f"max-width: {full_width}sp"))
+        compact.add_setter(brand_label, "visible", False)
+        compact.add_setter(busy_label, "visible", False)
+        self.add_breakpoint(compact)
+
+        narrow = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(f"max-width: {compact_width}sp"))
+        narrow.add_setter(brand_label, "visible", False)
+        narrow.add_setter(busy_label, "visible", False)
+        narrow.add_setter(self._switcher, "visible", False)
+        narrow.add_setter(self._switcher_bar, "reveal", True)
+        self.add_breakpoint(narrow)
+
+    def _header_thresholds(
+        self,
+        brand: Gtk.Box,
+        brand_label: Gtk.Label,
+    ) -> tuple[int, int]:
+        """Window widths below which the header must shed the brand, then the tabs.
+
+        AdwHeaderBar centres its title widget, so it reserves the wider of the
+        two sides on both of them; the tabs start truncating below that sum.
+        """
+
+        switcher = _natural_width(self._switcher)
+        brand_width = _natural_width(brand)
+        text_width = _natural_width(brand_label) + BRAND_SPACING
+        full = switcher + 2 * brand_width + HEADER_SIDE_PADDING
+        # Hiding the brand text buys exactly its width; past that the tabs move
+        # out of the header instead of shrinking below their natural size.
+        return full, full - text_width
 
     def request_refresh(self) -> None:
         if self._mutations_in_progress > 0 or self._refresh_in_progress:
@@ -1273,7 +1408,7 @@ class MainWindow(Adw.ApplicationWindow):
         on_failure: Callable[[], None] | None,
     ) -> None:
         if self._mutations_in_progress > 0:
-            self.show_message("Espera a que termine el cambio en curso.")
+            self.show_message(translate("Espera a que termine el cambio en curso."))
             if on_failure:
                 on_failure()
             return
@@ -1289,19 +1424,17 @@ class MainWindow(Adw.ApplicationWindow):
             except Exception as error:
                 GLib.idle_add(self._finish_mutation_error, str(error), on_failure)
             else:
-                GLib.idle_add(
-                    self._finish_mutation_success, success_message, on_success
-                )
+                GLib.idle_add(self._finish_mutation_success, success_message, on_success)
 
         threading.Thread(target=execute, daemon=True, name="control-mutation").start()
 
     def show_error(self, message: str) -> None:
-        toast = Adw.Toast.new(message)
+        toast = Adw.Toast.new(translate(message))
         toast.set_timeout(5)
         self._toast_overlay.add_toast(toast)
 
     def show_message(self, message: str) -> None:
-        self._toast_overlay.add_toast(Adw.Toast.new(message))
+        self._toast_overlay.add_toast(Adw.Toast.new(translate(message)))
 
     def _refresh_timer(self) -> bool:
         self.request_refresh()
@@ -1313,10 +1446,7 @@ class MainWindow(Adw.ApplicationWindow):
         status: dict[str, object],
     ) -> bool:
         self._refresh_in_progress = False
-        if (
-            generation != self._refresh_generation
-            or self._mutations_in_progress > 0
-        ):
+        if generation != self._refresh_generation or self._mutations_in_progress > 0:
             self._refresh_pending = True
             self._queue_pending_refresh()
             return GLib.SOURCE_REMOVE
@@ -1326,13 +1456,11 @@ class MainWindow(Adw.ApplicationWindow):
         if not supported:
             product = capabilities.get("product", "desconocido")
             self._banner.set_title(
-                f"Modelo {product} no admitido: controles bloqueados"
+                translate("Modelo {product} no admitido: controles bloqueados", product=product)
             )
             self._banner.set_revealed(True)
         elif not fan_control:
-            self._banner.set_title(
-                "El kernel no publica control manual de ventiladores"
-            )
+            self._banner.set_title(translate("El kernel no publica control manual de ventiladores"))
             self._banner.set_revealed(True)
         else:
             self._banner.set_revealed(False)
@@ -1340,36 +1468,36 @@ class MainWindow(Adw.ApplicationWindow):
         self._fan_page.update_status(status)
         self._lighting_page.update_status(status)
         self._device_page.update_status(status)
+        self._automation_page.update_status(status)
+        self._doctor_page.update_status(status)
+        self._latest_status = status
+        self._tray.update_status(status)
+        self._observe_thermal_alert(status)
+        self._apply_power_source_automation(status)
         self._queue_pending_refresh()
         return GLib.SOURCE_REMOVE
 
     def _finish_refresh_error(self, generation: int, message: str) -> bool:
         self._refresh_in_progress = False
-        if (
-            generation != self._refresh_generation
-            or self._mutations_in_progress > 0
-        ):
+        if generation != self._refresh_generation or self._mutations_in_progress > 0:
             self._refresh_pending = True
             self._queue_pending_refresh()
             return GLib.SOURCE_REMOVE
-        self._banner.set_title(f"No se puede leer el equipo: {message}")
+        self._banner.set_title(translate("No se puede leer el equipo: {message}", message=message))
         self._banner.set_revealed(True)
         self._queue_pending_refresh()
         return GLib.SOURCE_REMOVE
 
-    def _finish_mutation_success(
-        self, message: str, callback: Callable[[], None] | None
-    ) -> bool:
+    def _finish_mutation_success(self, message: str, callback: Callable[[], None] | None) -> bool:
         self._finish_busy_state()
         self._toast_overlay.add_toast(Adw.Toast.new(message))
+        self._home_page.record_history_event(message)
         if callback:
             callback()
         self._queue_pending_refresh()
         return GLib.SOURCE_REMOVE
 
-    def _finish_mutation_error(
-        self, message: str, callback: Callable[[], None] | None
-    ) -> bool:
+    def _finish_mutation_error(self, message: str, callback: Callable[[], None] | None) -> bool:
         self._finish_busy_state()
         self.show_error(message)
         if callback:
@@ -1382,6 +1510,43 @@ class MainWindow(Adw.ApplicationWindow):
         busy = self._mutations_in_progress > 0
         self._spinner.set_spinning(busy)
         self._busy_box.set_visible(busy)
+
+    def _observe_thermal_alert(self, status: dict[str, object]) -> None:
+        alert = self._thermal_alerts.observe(status)
+        if alert is None:
+            return
+        self.show_error(alert.message)
+        self._home_page.record_history_event(alert.message)
+        application = self.get_application()
+        if isinstance(application, Adw.Application):
+            notification = Gio.Notification.new("Legion Control")
+            notification.set_body(alert.message)
+            application.send_notification("thermal-alert", notification)
+
+    def _apply_power_source_automation(self, status: dict[str, object]) -> None:
+        slot = self._power_source_automation.observe(
+            status,
+            self._automation_page.configuration,
+        )
+        if slot is None or self._mutations_in_progress > 0:
+            return
+        try:
+            scenes = load_scenes_for_status(self._scene_store, status)
+            scene = scenes[slot]
+        except (OSError, ValueError) as error:
+            self.show_error(translate("No se aplicó la automatización: {error}", error=error))
+            return
+        capabilities = _dictionary(status.get("capabilities"))
+        rgb_available = bool(capabilities.get("rgb_control"))
+        self.run_mutation(
+            lambda: apply_scene(self._client, scene, rgb_available=rgb_available),
+            translate(
+                "Automatización: escena {scene} aplicada.",
+                scene=translate(SCENE_LABELS[slot]),
+            ),
+            self.request_refresh,
+            self.request_refresh,
+        )
 
     def _queue_pending_refresh(self) -> None:
         if (
@@ -1397,13 +1562,27 @@ class MainWindow(Adw.ApplicationWindow):
         self.request_refresh()
         return GLib.SOURCE_REMOVE
 
+    def _on_close_request(self, _window: Adw.ApplicationWindow) -> bool:
+        if not self._tray.available:
+            return False
+        self.hide()
+        return True
+
+    def show_view(self, name: str) -> None:
+        self._view_stack.set_visible_child_name(name)
+        self.present()
+
 
 class LegionControlApplication(Adw.Application):
     def __init__(self) -> None:
+        configure_startup_language()
         super().__init__(application_id=APPLICATION_ID)
+        self._tray = TrayController(self.activate)
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
+        # Without this the desktop and assistive technologies announce "python3".
+        GLib.set_application_name("Legion Control")
         if os.environ.get("LEGION_CONTROL_MOCK") == "1":
             requested_theme = os.environ.get("LEGION_CONTROL_THEME")
             style_manager = Adw.StyleManager.get_default()
@@ -1412,6 +1591,23 @@ class LegionControlApplication(Adw.Application):
             elif requested_theme == "dark":
                 style_manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         install_css()
+        self._tray.start()
+        for name, view, accelerator in (
+            ("show-home", "home", "<Primary>1"),
+            ("show-fans", "fans", "<Primary>2"),
+            ("show-lighting", "lighting", "<Primary>3"),
+            ("show-device", "device", "<Primary>4"),
+            ("show-automation", "automation", "<Primary>5"),
+            ("show-doctor", "doctor", "<Primary>6"),
+        ):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", self._on_show_view, view)
+            self.add_action(action)
+            self.set_accels_for_action(f"app.{name}", [accelerator])
+
+    def do_shutdown(self) -> None:
+        self._tray.stop()
+        Adw.Application.do_shutdown(self)
 
     def do_activate(self) -> None:
         window = self.get_active_window()
@@ -1420,13 +1616,29 @@ class LegionControlApplication(Adw.Application):
             if os.environ.get("LEGION_CONTROL_MOCK") == "1":
                 client = MockControlClient()
                 if os.environ.get("LEGION_CONTROL_MOCK_CURVE") == "1":
-                    client.set_fan_policy(
-                        FanPolicy(FanMode.CURVE, 2500, DEFAULT_CURVE)
-                    )
+                    client.set_fan_policy(FanPolicy(FanMode.CURVE, 2500, DEFAULT_CURVE))
             else:
                 client = LocalControlClient(SysfsHardware())
-            window = MainWindow(self, client)
+            window = MainWindow(self, client, self._tray)
         window.present()
+
+    def _on_show_view(
+        self,
+        _action: Gio.SimpleAction,
+        _parameter: GLib.Variant | None,
+        view: str,
+    ) -> None:
+        self.activate()
+        window = self.get_active_window()
+        if isinstance(window, MainWindow):
+            window.show_view(view)
+
+
+def _natural_width(widget: Gtk.Widget) -> int:
+    _minimum, natural, _minimum_baseline, _natural_baseline = widget.measure(
+        Gtk.Orientation.HORIZONTAL, -1
+    )
+    return natural
 
 
 def _dictionary(value: object) -> dict[str, Any]:
@@ -1460,22 +1672,26 @@ def _string_list(value: object) -> list[str]:
     return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
 
 
+def _profile_label(profile: str) -> str:
+    return translate(PROFILE_LABELS[PROFILE_VALUES.index(profile)])
+
+
 def _temperature(value: object) -> str:
-    return f"{value} °C" if type(value) is int else "No disponible"
+    return f"{value} °C" if type(value) is int else translate("No disponible")
 
 
 def _rpm(value: object) -> str:
-    return f"{value} RPM" if type(value) is int else "No disponible"
+    return f"{value} RPM" if type(value) is int else translate("No disponible")
 
 
 def _battery_status(value: object) -> str:
     labels = {
-        "Charging": "cargando",
-        "Discharging": "en uso",
-        "Full": "completa",
-        "Not charging": "sin cargar",
+        "Charging": translate("cargando"),
+        "Discharging": translate("en uso"),
+        "Full": translate("completa"),
+        "Not charging": translate("sin cargar"),
     }
-    return labels.get(str(value), str(value or "estado desconocido"))
+    return labels.get(str(value), str(value or translate("estado desconocido")))
 
 
 def main() -> int:

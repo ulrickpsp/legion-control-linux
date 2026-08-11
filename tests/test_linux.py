@@ -72,10 +72,7 @@ class SysfsHardwareTests(unittest.TestCase):
 
     def test_profile_uses_class_device_that_accepts_custom(self) -> None:
         self.hardware.set_profile("custom")
-        profile = (
-            self.root
-            / "sys/class/platform-profile/platform-profile-0/profile"
-        )
+        profile = self.root / "sys/class/platform-profile/platform-profile-0/profile"
         self.assertEqual(profile.read_text(), "custom")
 
     def test_power_limits_require_custom_and_verify_both_values(self) -> None:
@@ -89,10 +86,7 @@ class SysfsHardwareTests(unittest.TestCase):
         self.hardware.set_profile("custom")
         self.hardware.set_power_limits(CustomPowerLimits(70, 125))
 
-        power = (
-            self.root
-            / "sys/class/firmware-attributes/lenovo-wmi-other-0/attributes"
-        )
+        power = self.root / "sys/class/firmware-attributes/lenovo-wmi-other-0/attributes"
         self.assertEqual(
             (power / "ppt_pl1_spl/current_value").read_text(),
             "70",
@@ -108,10 +102,7 @@ class SysfsHardwareTests(unittest.TestCase):
 
     def test_feature_write_is_verified(self) -> None:
         self.hardware.set_feature("conservation_mode", True)
-        path = (
-            self.root
-            / "sys/bus/platform/devices/VPC2004:00/conservation_mode"
-        )
+        path = self.root / "sys/bus/platform/devices/VPC2004:00/conservation_mode"
         self.assertEqual(path.read_text(), "1")
 
     def test_unsupported_product_blocks_mutation(self) -> None:

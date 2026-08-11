@@ -3,6 +3,9 @@ import sys
 
 sys.path.insert(0, "/usr/lib/legion-control")
 
-from legion_control.ui import main
+if len(sys.argv) > 1:
+    from legion_control.cli import main
+else:
+    from legion_control.ui import main
 
 raise SystemExit(main())

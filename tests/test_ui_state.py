@@ -13,6 +13,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Adw, Gdk  # noqa: E402
 
 from legion_control.domain import FanMode  # noqa: E402
+from legion_control.history import TelemetryArchive  # noqa: E402
 from legion_control.mock import MockControlClient  # noqa: E402
 from legion_control.scenes import SceneSlot, SceneStore  # noqa: E402
 from legion_control.ui import FanPage, HomePage, MainWindow, Operation  # noqa: E402
@@ -54,6 +55,12 @@ class PageStateTests(unittest.TestCase):
         self.client = MockControlClient()
         self.mutations = MutationCapture()
 
+    def _archive(self) -> TelemetryArchive:
+        """A private archive per test, so history never leaks between tests."""
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        return TelemetryArchive(Path(directory.name) / "telemetry.jsonl")
+
     def test_refresh_does_not_overwrite_unapplied_fan_mode(self) -> None:
         page = FanPage(self.client, self.mutations, lambda: None)
         page.update_status(self.client.read_status())
@@ -93,7 +100,12 @@ class PageStateTests(unittest.TestCase):
         self.assertEqual(self.client.power_limits.slow_w, 140)
 
     def test_refresh_does_not_overwrite_pending_profile(self) -> None:
-        page = HomePage(self.client, self.mutations, lambda: None)
+        page = HomePage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            telemetry_archive=self._archive(),
+        )
         page.update_status(self.client.read_status())
 
         page._profile_row.set_selected(1)
@@ -103,7 +115,12 @@ class PageStateTests(unittest.TestCase):
         self.assertIn("confirmando", page._profile_row.get_subtitle().lower())
 
     def test_successful_profile_change_shows_kernel_readback(self) -> None:
-        page = HomePage(self.client, self.mutations, lambda: None)
+        page = HomePage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            telemetry_archive=self._archive(),
+        )
         page.update_status(self.client.read_status())
         page._profile_row.set_selected(1)
         operation, _, on_success, _ = self.mutations.calls[-1]
@@ -117,7 +134,12 @@ class PageStateTests(unittest.TestCase):
         self.assertIn("confirmado", page._profile_row.get_subtitle().lower())
 
     def test_home_collects_short_history_on_each_refresh(self) -> None:
-        page = HomePage(self.client, self.mutations, lambda: None)
+        page = HomePage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            telemetry_archive=self._archive(),
+        )
         page.update_status(self.client.read_status())
         page.update_status(self.client.read_status())
 

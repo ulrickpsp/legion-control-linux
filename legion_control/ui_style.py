@@ -1,4 +1,4 @@
-"""Application CSS and GTK style-provider installation."""
+"""Application CSS, style-provider installation and desktop content width."""
 
 from __future__ import annotations
 
@@ -6,10 +6,18 @@ from typing import Final
 
 import gi
 
+gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gdk, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gtk  # noqa: E402
+
+
+# libadwaita clamps preference pages to 600px for phone-sized windows. This is
+# a desktop-only application, so the pages get a wider measure while still
+# staying inside a comfortable reading length.
+DESKTOP_CONTENT_WIDTH: Final = 900
+DESKTOP_TIGHTENING_WIDTH: Final = 700
 
 
 APPLICATION_CSS: Final = """
@@ -89,12 +97,15 @@ APPLICATION_CSS: Final = """
           font-weight: 800;
         }
 
+        /* Two sets of series colours: GTK CSS cannot query the colour scheme,
+           so the panel toggles .on-light and these rules win by specificity.
+           Every pair clears 4.5:1 against its own background. */
         .legend-cpu {
           color: #f59e29;
         }
 
         .legend-gpu {
-          color: @legion_red;
+          color: #ff8a8a;
         }
 
         .legend-fan1 {
@@ -103,6 +114,22 @@ APPLICATION_CSS: Final = """
 
         .legend-fan2 {
           color: #7a85f2;
+        }
+
+        .history-legend.on-light.legend-cpu {
+          color: #b45309;
+        }
+
+        .history-legend.on-light.legend-gpu {
+          color: @legion_red_deep;
+        }
+
+        .history-legend.on-light.legend-fan1 {
+          color: #0e7490;
+        }
+
+        .history-legend.on-light.legend-fan2 {
+          color: #4f46e5;
         }
 
         .hero-heading {
@@ -289,6 +316,27 @@ APPLICATION_CSS: Final = """
           min-width: 7.5rem;
         }
 """
+
+
+def widen_content(root: Gtk.Widget) -> None:
+    """Give every preference page under `root` the desktop content width.
+
+    Applied from the window so pages added later are covered without each page
+    having to remember to opt in.
+    """
+
+    for clamp in _clamps(root):
+        clamp.set_maximum_size(DESKTOP_CONTENT_WIDTH)
+        clamp.set_tightening_threshold(DESKTOP_TIGHTENING_WIDTH)
+
+
+def _clamps(widget: Gtk.Widget):
+    if isinstance(widget, Adw.Clamp):
+        yield widget
+    child = widget.get_first_child()
+    while child is not None:
+        yield from _clamps(child)
+        child = child.get_next_sibling()
 
 
 def install_css() -> None:

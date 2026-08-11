@@ -16,8 +16,10 @@ from legion_control.rgb import (
     RgbConfiguration,
     _send_feature_reports,
     _validate_open_device,
+    gradient_rgb_configuration,
     rgb_configuration_from_json,
     rgb_configuration_to_json,
+    wave_rgb_configuration,
 )
 
 
@@ -71,6 +73,14 @@ class RgbConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "24 zonas"):
             RgbConfiguration(True, 50, (RgbColor(255, 0, 0),))
 
+    def test_static_effect_helpers_stay_within_24_verified_zones(self) -> None:
+        gradient = gradient_rgb_configuration(RgbColor(0, 0, 0), RgbColor(255, 120, 0), 60)
+        wave = wave_rgb_configuration(70)
+
+        self.assertEqual(gradient.zones[0], RgbColor(0, 0, 0))
+        self.assertEqual(gradient.zones[-1], RgbColor(255, 120, 0))
+        self.assertEqual(len(wave.zones), RGB_ZONE_COUNT)
+
 
 class LegionRgbHardwareTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -108,14 +118,24 @@ class LegionRgbHardwareTests(unittest.TestCase):
                 save_profile[offset : offset + 19],
                 bytes(
                     (
-                        group_index + 1, 6,
-                        1, 0x0B,
-                        2, 2,
-                        3, 0,
-                        4, 0,
-                        5, 2,
-                        6, 0,
-                        1, color.red, color.green, color.blue,
+                        group_index + 1,
+                        6,
+                        1,
+                        0x0B,
+                        2,
+                        2,
+                        3,
+                        0,
+                        4,
+                        0,
+                        5,
+                        2,
+                        6,
+                        0,
+                        1,
+                        color.red,
+                        color.green,
+                        color.blue,
                         1,
                     )
                 ),
@@ -146,15 +166,31 @@ class LegionRgbHardwareTests(unittest.TestCase):
             reports[1][:26],
             bytes(
                 (
-                    0x07, 0xCB, 0x46, 0x00, 1, 1, 1,
-                    1, 6,
-                    1, 0x0B,
-                    2, 2,
-                    3, 0,
-                    4, 0,
-                    5, 2,
-                    6, 0,
-                    1, 255, 0, 0,
+                    0x07,
+                    0xCB,
+                    0x46,
+                    0x00,
+                    1,
+                    1,
+                    1,
+                    1,
+                    6,
+                    1,
+                    0x0B,
+                    2,
+                    2,
+                    3,
+                    0,
+                    4,
+                    0,
+                    5,
+                    2,
+                    6,
+                    0,
+                    1,
+                    255,
+                    0,
+                    0,
                     24,
                 )
             ),
@@ -201,10 +237,7 @@ class FeatureReportTransportTests(unittest.TestCase):
         close_mock,
         sleep_mock,
     ) -> None:
-        reports = tuple(
-            bytes((0x07,)) + bytes(RGB_FEATURE_REPORT_SIZE - 1)
-            for _ in range(3)
-        )
+        reports = tuple(bytes((0x07,)) + bytes(RGB_FEATURE_REPORT_SIZE - 1) for _ in range(3))
         ioctl_mock.side_effect = [RGB_FEATURE_REPORT_SIZE] * 3
 
         _send_feature_reports(Path("/dev/hidraw2"), reports)
@@ -214,9 +247,7 @@ class FeatureReportTransportTests(unittest.TestCase):
         self.assertTrue(open_flags & os.O_NOFOLLOW)
         validate_mock.assert_called_once_with(42)
         self.assertEqual(ioctl_mock.call_count, 3)
-        self.assertTrue(
-            all(invocation.args[0] == 42 for invocation in ioctl_mock.call_args_list)
-        )
+        self.assertTrue(all(invocation.args[0] == 42 for invocation in ioctl_mock.call_args_list))
         self.assertEqual(
             sleep_mock.call_args_list,
             [call(RGB_REPORT_DELAY_SECONDS)] * 3,
@@ -249,9 +280,7 @@ class OpenDeviceValidationTests(unittest.TestCase):
         self,
         ioctl_mock,
     ) -> None:
-        descriptor_payload = bytes(
-            (0x06, 0x89, 0xFF, 0x09, 0x07, 0xA1, 0x01, 0x85, 0x07)
-        )
+        descriptor_payload = bytes((0x06, 0x89, 0xFF, 0x09, 0x07, 0xA1, 0x01, 0x85, 0x07))
 
         def ioctl_side_effect(_fd, request, buffer, _mutate):
             number = request & 0xFF

@@ -29,10 +29,7 @@ def build_fake_sysfs(root: Path, product: str = "83LU") -> None:
     _write(profile / "choices", "low-power balanced performance max-power custom")
     _write(profile / "profile", "performance")
 
-    power = (
-        root
-        / "sys/class/firmware-attributes/lenovo-wmi-other-0/attributes"
-    )
+    power = root / "sys/class/firmware-attributes/lenovo-wmi-other-0/attributes"
     _build_power_attribute(power / "ppt_pl1_spl", 50, 135, 1, 70, 60)
     _build_power_attribute(power / "ppt_pl2_sppt", 60, 210, 1, 125, 119)
 

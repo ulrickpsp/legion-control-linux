@@ -25,10 +25,33 @@ Homepage = "https://github.com/ulrickpsp/legion-control-linux"
 Issues = "https://github.com/ulrickpsp/legion-control-linux/issues"
 Source = "https://github.com/ulrickpsp/legion-control-linux"
 
+[dependency-groups]
+# Optional developer tooling; the release gate skips each one when absent.
+# `pygobject-stubs` pulls PyGObject as a dependency, which needs build headers,
+# so install the group through `./scripts/dev-tools.sh` rather than directly.
+dev = [
+  "pygobject-stubs>=2.17",
+  "pyright>=1.1.400",
+  "ruff>=0.16",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# Ruff's defaults plus E402, so the deliberate `# noqa: E402` on the imports
+# that must follow gi.require_version stay meaningful.
+select = ["E4", "E7", "E9", "F", "RUF"]
+# The interface ships Spanish copy and translations; ruff's ambiguous-character
+# rules flag ordinary punctuation in those strings.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
+include = ["legion_control"]
+# PyGObject ships no inline type information; `pygobject-stubs` supplies it and
+# `./scripts/dev-tools.sh` puts it where pyright looks. The stubs are type-only,
+# so pyright must not ask for their runtime source.
+reportMissingModuleSource = "none"

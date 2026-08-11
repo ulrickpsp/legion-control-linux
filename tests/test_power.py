@@ -23,9 +23,7 @@ class CustomPowerLimitsTests(unittest.TestCase):
         limits.validate_for(self.capabilities)
 
         with self.assertRaisesRegex(ValueError, "sostenida"):
-            CustomPowerLimits(sustained_w=136, slow_w=125).validate_for(
-                self.capabilities
-            )
+            CustomPowerLimits(sustained_w=136, slow_w=125).validate_for(self.capabilities)
 
     def test_round_trip_uses_strict_versioned_json(self) -> None:
         limits = CustomPowerLimits(sustained_w=70, slow_w=125)
@@ -33,13 +31,9 @@ class CustomPowerLimitsTests(unittest.TestCase):
 
     def test_rejects_extra_keys_and_boolean_values(self) -> None:
         with self.assertRaisesRegex(ValueError, "claves"):
-            power_limits_from_json(
-                '{"version":1,"sustained_w":70,"slow_w":125,"path":"/tmp/x"}'
-            )
+            power_limits_from_json('{"version":1,"sustained_w":70,"slow_w":125,"path":"/tmp/x"}')
         with self.assertRaisesRegex(ValueError, "entero"):
-            power_limits_from_json(
-                '{"version":1,"sustained_w":true,"slow_w":125}'
-            )
+            power_limits_from_json('{"version":1,"sustained_w":true,"slow_w":125}')
 
 
 if __name__ == "__main__":

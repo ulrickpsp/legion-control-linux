@@ -13,7 +13,9 @@
       Versión alpha validada en una sola unidad Lenovo Legion Pro 5 16IAX10H
       (DMI 83LU). Consulta temperaturas y ventiladores, cambia perfiles y
       potencia, aplica curvas seguras y controla el teclado RGB ITE de 24
-      zonas. Otros modelos y configuraciones no están validados.
+      zonas. Incluye Doctor solo lectura, historial local exportable y
+      automatización explícita de escenas mientras la aplicación está abierta.
+      Otros modelos y configuraciones no están validados.
     </p>
   </description>
   <url type="homepage">https://github.com/ulrickpsp/legion-control-linux</url>

@@ -55,6 +55,23 @@ step "Compiling Python sources"
 PYTHONPYCACHEPREFIX="$CHECK_TMP/pycache" \
     python3 -m compileall -q "$PROJECT_DIR/legion_control" "$PROJECT_DIR/tests"
 
+step "Linting and formatting Python sources"
+if command -v ruff >/dev/null 2>&1; then
+    (cd "$PROJECT_DIR" && ruff check legion_control tests)
+    (cd "$PROJECT_DIR" && ruff format --check legion_control tests)
+    note "ruff reported no findings"
+else
+    note "SKIP: ruff is not installed; run ./scripts/dev-tools.sh"
+fi
+
+step "Type-checking Python sources"
+if command -v pyright >/dev/null 2>&1; then
+    (cd "$PROJECT_DIR" && pyright)
+    note "pyright reported no findings"
+else
+    note "SKIP: pyright is not installed; run ./scripts/dev-tools.sh"
+fi
+
 step "Running the headless unit test suite"
 mkdir -p "$CHECK_TMP/config"
 (
@@ -63,6 +80,7 @@ mkdir -p "$CHECK_TMP/config"
     GSETTINGS_BACKEND=memory \
     NO_AT_BRIDGE=1 \
     XDG_CONFIG_HOME="$CHECK_TMP/config" \
+    XDG_STATE_HOME="$CHECK_TMP/state" \
         python3 -m unittest discover -v
 )
 

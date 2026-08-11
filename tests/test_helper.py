@@ -110,9 +110,7 @@ class PrivilegedControllerTests(unittest.TestCase):
         self.store = ConfigStore(Path(self.temporary.name) / "fan-config.json")
         self.hardware = FakeHardware()
         self.service = FakeService()
-        self.controller = PrivilegedController(
-            self.hardware, self.store, self.service
-        )
+        self.controller = PrivilegedController(self.hardware, self.store, self.service)
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -170,9 +168,7 @@ class PrivilegedControllerTests(unittest.TestCase):
         self.assertEqual(self.store.load(), default_policy())
 
     def test_rgb_is_persisted_only_after_hardware_accepts_reports(self) -> None:
-        rgb_store = RgbConfigStore(
-            Path(self.temporary.name) / "rgb-config.json"
-        )
+        rgb_store = RgbConfigStore(Path(self.temporary.name) / "rgb-config.json")
         rgb = FakeRgbHardware()
         controller = PrivilegedController(
             self.hardware,
@@ -190,9 +186,7 @@ class PrivilegedControllerTests(unittest.TestCase):
         self.assertTrue(result["enabled"])
 
     def test_failed_rgb_sequence_invalidates_stale_public_readback(self) -> None:
-        rgb_store = RgbConfigStore(
-            Path(self.temporary.name) / "rgb-config.json"
-        )
+        rgb_store = RgbConfigStore(Path(self.temporary.name) / "rgb-config.json")
         previous = solid_rgb_configuration(RgbColor(0, 255, 0), 40)
         rgb_store.save(previous)
         controller = PrivilegedController(
@@ -204,9 +198,7 @@ class PrivilegedControllerTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(RgbHardwareError, "RGB"):
-            controller.set_rgb_configuration(
-                solid_rgb_configuration(RgbColor(0, 0, 255), 70)
-            )
+            controller.set_rgb_configuration(solid_rgb_configuration(RgbColor(0, 0, 255), 70))
 
         self.assertIsNone(rgb_store.load())
 
@@ -217,9 +209,7 @@ class PrivilegedControllerTests(unittest.TestCase):
             FakeService(fail_activation=True),
         )
         with self.assertRaises(HelperError):
-            controller.set_fan_policy(
-                FanPolicy(FanMode.CURVE, 2500, DEFAULT_CURVE)
-            )
+            controller.set_fan_policy(FanPolicy(FanMode.CURVE, 2500, DEFAULT_CURVE))
         self.assertGreater(self.hardware.restore_count, 0)
         self.assertEqual(self.store.load(), default_policy())
 

@@ -4,6 +4,23 @@ All notable changes to Legion Control are documented here. The project follows
 [Semantic Versioning](https://semver.org/) while the public API and hardware
 support surface mature.
 
+## Unreleased
+
+### Added
+
+- Read-only Doctor page and terminal report (`legion-control doctor`) with
+  copy/save support output.
+- Seven-day local telemetry archive, 10 min/24 h/7 day views, change markers,
+  and CSV export; samples are limited to one persisted record every 30 seconds.
+- Opt-in, transition-only AC/battery scene automation while the UI stays open.
+- Elevated/critical temperature notifications that never mutate hardware state.
+- Optional StatusNotifier tray state and terminal status, scene, and
+  restore-firmware workflows.
+- Static 24-zone RGB wave and gradient presets using only the physically
+  verified static ITE report sequence.
+- English, Spanish, French, Simplified Chinese, and Russian interface
+  localization with system-locale detection and a persistent in-app selector.
+
 ## 0.5.0 — 2026-08-11
 
 ### Added

@@ -21,14 +21,21 @@ DKMS module, firmware flash, account, telemetry, or network service.
 
 ## Features
 
-- CPU/GPU temperature, both fan speeds, battery state, and ten-minute history.
+- CPU/GPU temperature, both fan speeds, battery state, plus local history views
+  for ten minutes, 24 hours, and seven days with CSV export and change markers.
 - Lenovo platform profiles.
 - Firmware automatic, fixed-RPM, and validated temperature-curve fan modes.
 - Custom sustained/slow CPU power limits within firmware-published bounds.
-- Static 24-zone RGB, brightness, presets, and off for ITE `048d:c195`.
+- Static 24-zone RGB, brightness, presets, wave/gradient frames, and off for
+  ITE `048d:c195`.
 - Three local quick scenes: Silence, Work, and Game.
+- Opt-in AC/battery scene automation while the application is open.
 - Battery conservation, Fn Lock, and camera power when exposed by the kernel.
 - Native PolicyKit authorization and a hardened systemd fan daemon.
+- Read-only Doctor report, copy/save support bundle, StatusNotifier tray state,
+  and terminal workflows.
+- Interface localization for English, Spanish, French, Simplified Chinese, and
+  Russian. It follows the system locale or the saved in-app language choice.
 
 ## Verified hardware
 
@@ -66,6 +73,8 @@ available. A matching marketing name alone is not enough.
 - The RGB writer revalidates VID/PID and the Gen10 descriptor from the opened
   HID file descriptor before sending bounded 960-byte feature reports.
 - No broad `hidraw` udev permission is installed.
+- Thermal notifications only inform; they never issue an unrequested hardware
+  write. The restore-to-firmware action remains explicit.
 
 Read [`docs/SAFETY.md`](docs/SAFETY.md) before using manual fan or power
 control. This is independent community software, not affiliated with or
@@ -108,6 +117,36 @@ Run the UI safely with simulated hardware:
 LEGION_CONTROL_MOCK=1 python3 -m legion_control.ui
 ```
 
+Open the **Language** page to select English, Spanish, French, Simplified
+Chinese, or Russian. The preference is stored under the user configuration
+directory and applies the next time Legion Control opens. To test a locale for
+one launch without saving it, set `LEGION_CONTROL_LANGUAGE` to `en`, `es`,
+`fr`, `zh`, or `ru`.
+
+Read-only terminal workflows:
+
+```bash
+legion-control status
+legion-control doctor
+legion-control doctor --json
+```
+
+Applying a scene or restoring firmware through the terminal uses the same
+PolicyKit helper and allowlist as the UI:
+
+```bash
+legion-control scene work
+legion-control restore-firmware
+```
+
+The optional tray indicator uses the desktop StatusNotifier protocol. When a
+watcher is present, closing the window keeps the indicator available; activate
+it to reopen Legion Control. Without a watcher, closing the window exits
+normally.
+
+Use `Ctrl+1` through `Ctrl+6` to jump to Inicio, Ventilación, Iluminación,
+Dispositivo, Automatización, and Doctor.
+
 Run the complete offline, unprivileged release gate:
 
 ```bash
@@ -139,9 +178,10 @@ gates. A successful unit suite is not evidence for a new laptop model.
 ## Scope and roadmap
 
 Version 0.5.0 deliberately excludes overclocking, GPU/MUX switching, animated
-RGB, firmware flashing, and third-party kernel modules. Likely next steps are a
-read-only Doctor report, tray/CLI workflows, AC/battery automations, and bounded
-24-zone effects. New hardware support requires its own reversible evidence.
+RGB firmware effects, firmware flashing, and third-party kernel modules. Static
+24-zone gradients and waves use only the verified static report sequence; they
+do not claim or send an animation command. New hardware support requires its
+own reversible evidence.
 
 ## Alpha disclaimer
 

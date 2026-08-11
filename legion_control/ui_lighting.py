@@ -146,7 +146,7 @@ class LightingPage(Adw.PreferencesPage):
 
         controls = Adw.PreferencesGroup()
         controls.set_title("Control")
-        controls.set_description("Borrador local · un solo cambio al pulsar Aplicar")
+        controls.set_description("Se aplica al pulsar Aplicar · un solo cambio para las 24 zonas")
         self._controls_group = controls
 
         self._enabled_row = Adw.SwitchRow()

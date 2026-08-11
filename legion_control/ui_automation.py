@@ -9,7 +9,7 @@ import gi
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Adw, Gtk  # noqa: E402
+from gi.repository import Adw, GObject, Gtk  # noqa: E402
 
 from legion_control.automation import (  # noqa: E402
     AutomationConfig,
@@ -58,7 +58,7 @@ class AutomationPage(Adw.PreferencesPage):
         controls = Adw.PreferencesGroup()
         controls.set_title("Escenas al cambiar fuente")
         controls.set_description(
-            "Desactivado por defecto · funciona mientras Legion Control está abierto"
+            "Desactivado por defecto · se guarda al instante y actúa con la app abierta"
         )
 
         self._ac_enabled = Adw.SwitchRow()
@@ -66,7 +66,7 @@ class AutomationPage(Adw.PreferencesPage):
         self._ac_enabled.set_subtitle("Aplica una escena guardada tras el cambio")
         self._ac_enabled.connect("notify::active", self._on_controls_changed)
         controls.add(self._ac_enabled)
-        self._ac_scene = self._scene_row("Escena con corriente")
+        self._ac_scene = self._scene_row("Escena con corriente", self._ac_enabled)
         controls.add(self._ac_scene)
 
         self._battery_enabled = Adw.SwitchRow()
@@ -74,7 +74,7 @@ class AutomationPage(Adw.PreferencesPage):
         self._battery_enabled.set_subtitle("Aplica una escena guardada tras el cambio")
         self._battery_enabled.connect("notify::active", self._on_controls_changed)
         controls.add(self._battery_enabled)
-        self._battery_scene = self._scene_row("Escena con batería")
+        self._battery_scene = self._scene_row("Escena con batería", self._battery_enabled)
         controls.add(self._battery_scene)
         self.add(controls)
 
@@ -93,11 +93,14 @@ class AutomationPage(Adw.PreferencesPage):
         }
         self._source_value.set_label(labels[source])
 
-    def _scene_row(self, title: str) -> Adw.ComboRow:
+    def _scene_row(self, title: str, switch: Adw.SwitchRow) -> Adw.ComboRow:
         row = Adw.ComboRow()
         row.set_title(title)
         row.set_model(Gtk.StringList.new(tuple(translate(label) for label in SCENE_LABELS)))
         row.connect("notify::selected", self._on_controls_changed)
+        # Picking a scene for an automation that is off changes nothing, so the
+        # row follows its switch instead of inviting a pointless change.
+        switch.bind_property("active", row, "sensitive", GObject.BindingFlags.SYNC_CREATE)
         return row
 
     def _load(self) -> None:

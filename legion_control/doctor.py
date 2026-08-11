@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
 
+from legion_control import __version__
 from legion_control.i18n import translate
 
 
@@ -85,6 +86,13 @@ def build_doctor_report(
     release = kernel_release or os.uname().release
 
     findings = (
+        # A support report is worth little without saying what produced it.
+        DoctorFinding(
+            "version",
+            translate("Versión"),
+            f"Legion Control {__version__}",
+            DoctorSeverity.OK,
+        ),
         DoctorFinding(
             "identity",
             translate("Equipo"),

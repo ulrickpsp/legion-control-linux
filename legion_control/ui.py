@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import threading
 from collections.abc import Callable
 from typing import Any, Final
@@ -1267,6 +1268,7 @@ class MainWindow(Adw.ApplicationWindow):
             LanguageStore(),
             self.show_message,
             self.show_error,
+            self._request_restart,
         )
         self._view_stack.add_titled_with_icon(
             self._home_page, "home", translate("Inicio"), "view-grid-symbolic"
@@ -1562,6 +1564,11 @@ class MainWindow(Adw.ApplicationWindow):
         self.request_refresh()
         return GLib.SOURCE_REMOVE
 
+    def _request_restart(self) -> None:
+        application = self.get_application()
+        if isinstance(application, LegionControlApplication):
+            application.restart()
+
     def _on_close_request(self, _window: Adw.ApplicationWindow) -> bool:
         if not self._tray.available:
             return False
@@ -1578,6 +1585,17 @@ class LegionControlApplication(Adw.Application):
         configure_startup_language()
         super().__init__(application_id=APPLICATION_ID)
         self._tray = TrayController(self.activate)
+        self.restart_requested = False
+
+    def restart(self) -> None:
+        """Quit now and let `main` exec a fresh process.
+
+        Relaunching before this one exits would only reach the running instance
+        through the single-instance bus name, so the exec waits for shutdown.
+        """
+
+        self.restart_requested = True
+        self.quit()
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
@@ -1695,7 +1713,14 @@ def _battery_status(value: object) -> str:
 
 
 def main() -> int:
-    return LegionControlApplication().run(None)
+    application = LegionControlApplication()
+    status = application.run(None)
+    if application.restart_requested:
+        arguments = [sys.executable]
+        if sys.flags.isolated:
+            arguments.append("-I")
+        os.execv(sys.executable, [*arguments, *sys.argv])
+    return status
 
 
 if __name__ == "__main__":

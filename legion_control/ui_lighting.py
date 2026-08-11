@@ -10,7 +10,7 @@ import gi
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Adw, Gdk, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
 from legion_control.client import ControlPort  # noqa: E402
 from legion_control.i18n import translate  # noqa: E402
@@ -18,6 +18,7 @@ from legion_control.rgb import (  # noqa: E402
     RGB_ZONE_COUNT,
     RgbColor,
     RgbConfiguration,
+    alternating_rgb_configuration,
     default_rgb_configuration,
     gradient_rgb_configuration,
     rgb_configuration_from_document,
@@ -25,6 +26,9 @@ from legion_control.rgb import (  # noqa: E402
     wave_rgb_configuration,
 )
 
+
+# Long enough to swallow a slider drag, short enough to feel immediate.
+WRITE_DELAY_MS = 400
 
 Operation = Callable[[], dict[str, object]]
 MutationRunner = Callable[
@@ -115,7 +119,10 @@ class LightingPage(Adw.PreferencesPage):
         self._show_error = show_error
         self._available = False
         self._refreshing = False
-        self._editor_dirty = False
+        self._pending_write = False
+        self._write_in_flight = False
+        self._write_failed = False
+        self._write_timeout_id = 0
         self._selected_zone = 0
         self._zones = list(default_rgb_configuration().zones)
 
@@ -146,7 +153,7 @@ class LightingPage(Adw.PreferencesPage):
 
         controls = Adw.PreferencesGroup()
         controls.set_title("Control")
-        controls.set_description("Borrador local · un solo cambio al pulsar Aplicar")
+        controls.set_description("Se aplica solo, poco después de cada cambio")
         self._controls_group = controls
 
         self._enabled_row = Adw.SwitchRow()
@@ -227,14 +234,30 @@ class LightingPage(Adw.PreferencesPage):
             "Un solo frame verificado; no activa animaciones de firmware no comprobadas"
         )
         self._presets_group = presets
-        preset_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # A flow box so the row wraps instead of squeezing buttons below their
+        # minimum width once the list outgrows one line.
+        preset_box = Gtk.FlowBox()
         preset_box.add_css_class("preset-box")
+        preset_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        preset_box.set_homogeneous(True)
+        preset_box.set_min_children_per_line(2)
+        # Four columns keep every label, including the longest, above its
+        # minimum width at the narrowest supported desktop.
+        preset_box.set_max_children_per_line(4)
+        preset_box.set_row_spacing(8)
+        preset_box.set_column_spacing(8)
         for label, preset in (
             ("Legion", self._preset_legion),
             ("Blanco", self._preset_white),
             ("Espectro", self._preset_spectrum),
             ("Atardecer", self._preset_sunset),
             ("Ola", self._preset_wave),
+            ("Hielo", self._preset_ice),
+            ("Bosque", self._preset_forest),
+            ("Neón", self._preset_neon),
+            ("Brasa", self._preset_ember),
+            ("Nocturno", self._preset_night),
+            ("Ajedrez", self._preset_checker),
             ("Apagar", self._preset_off),
         ):
             button = Gtk.Button(label=label)
@@ -244,17 +267,6 @@ class LightingPage(Adw.PreferencesPage):
         presets.add(preset_box)
         self.add(presets)
 
-        apply_group = Adw.PreferencesGroup()
-        apply_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        apply_box.set_halign(Gtk.Align.END)
-        self._apply_button = Gtk.Button(label="Aplicar iluminación")
-        self._apply_button.add_css_class("legion-primary")
-        self._apply_button.connect("clicked", self._on_apply_clicked)
-        self._apply_button.set_sensitive(False)
-        apply_box.append(self._apply_button)
-        apply_group.add(apply_box)
-        self.add(apply_group)
-
         self._color_button.connect("notify::rgba", self._on_color_selected)
         self._load_configuration(default_rgb_configuration())
 
@@ -263,7 +275,8 @@ class LightingPage(Adw.PreferencesPage):
         self._available = bool(capabilities.get("rgb_control"))
         known = bool(status.get("rgb_configuration_known"))
         document = status.get("rgb_configuration")
-        if not self._editor_dirty and known and isinstance(document, dict):
+        settled = not self._pending_write and not self._write_in_flight and not self._write_failed
+        if settled and known and isinstance(document, dict):
             try:
                 self._load_configuration(rgb_configuration_from_document(document))
             except ValueError:
@@ -282,7 +295,6 @@ class LightingPage(Adw.PreferencesPage):
                 translate("Controlador listo · aplica un preset para sincronizar")
             )
         self._set_controls_sensitive(self._available)
-        self._sync_apply_button()
 
     def current_configuration(self) -> RgbConfiguration:
         return RgbConfiguration(
@@ -304,7 +316,6 @@ class LightingPage(Adw.PreferencesPage):
             button.set_color(color)
         self._sync_color_button()
         self._refreshing = False
-        self._set_editor_dirty(False)
 
     def _select_zone(self, zone_index: int) -> None:
         self._selected_zone = zone_index
@@ -337,7 +348,7 @@ class LightingPage(Adw.PreferencesPage):
         )
         self._zones[self._selected_zone] = color
         self._zone_buttons[self._selected_zone].set_color(color)
-        self._set_editor_dirty(True)
+        self._schedule_write()
 
     def _on_apply_color_to_all(self, _button: Gtk.Button) -> None:
         color = self._zones[self._selected_zone]
@@ -349,12 +360,12 @@ class LightingPage(Adw.PreferencesPage):
         _parameter: object,
     ) -> None:
         if not self._refreshing:
-            self._set_editor_dirty(True)
+            self._schedule_write()
 
     def _on_brightness_changed(self, adjustment: Gtk.Adjustment) -> None:
         self._brightness_value.set_label(f"{adjustment.get_value():.0f} %")
         if not self._refreshing:
-            self._set_editor_dirty(True)
+            self._schedule_write()
 
     def _preset_legion(self) -> None:
         self._set_preset(solid_rgb_configuration(RgbColor(229, 32, 47), 70))
@@ -383,6 +394,35 @@ class LightingPage(Adw.PreferencesPage):
         )
         self._set_preset(rotated)
 
+    def _preset_ice(self) -> None:
+        self._set_preset(
+            gradient_rgb_configuration(RgbColor(79, 216, 245), RgbColor(234, 246, 255), 55)
+        )
+
+    def _preset_forest(self) -> None:
+        self._set_preset(
+            gradient_rgb_configuration(RgbColor(18, 112, 58), RgbColor(156, 224, 91), 60)
+        )
+
+    def _preset_neon(self) -> None:
+        self._set_preset(
+            gradient_rgb_configuration(RgbColor(255, 47, 176), RgbColor(0, 229, 255), 75)
+        )
+
+    def _preset_ember(self) -> None:
+        self._set_preset(
+            gradient_rgb_configuration(RgbColor(140, 16, 7), RgbColor(255, 176, 32), 65)
+        )
+
+    def _preset_night(self) -> None:
+        """A dim warm frame for working in the dark without glare."""
+        self._set_preset(solid_rgb_configuration(RgbColor(255, 155, 61), 15))
+
+    def _preset_checker(self) -> None:
+        self._set_preset(
+            alternating_rgb_configuration(RgbColor(229, 32, 47), RgbColor(12, 12, 14), 70)
+        )
+
     def _preset_off(self) -> None:
         configuration = self.current_configuration()
         self._set_preset(
@@ -390,47 +430,78 @@ class LightingPage(Adw.PreferencesPage):
         )
 
     def _set_preset(self, configuration: RgbConfiguration) -> None:
-        self._load_configuration(configuration)
-        self._set_editor_dirty(True)
+        """Take the preset's colours, keep the brightness the user chose."""
+        self._load_configuration(
+            RgbConfiguration(
+                configuration.enabled,
+                round(self._brightness.get_value()),
+                configuration.zones,
+            )
+        )
+        self._schedule_write()
 
     def _set_all_zones(self, color: RgbColor) -> None:
         self._zones = [color] * RGB_ZONE_COUNT
         for button in self._zone_buttons:
             button.set_color(color)
-        self._set_editor_dirty(True)
+        self._schedule_write()
 
-    def _on_apply_clicked(self, _button: Gtk.Button) -> None:
+    def _schedule_write(self) -> None:
+        """Coalesce edits into one write shortly after the user stops.
+
+        Every write crosses PolicyKit into the privileged helper and sends
+        960-byte HID reports, so dragging the brightness slider must not turn
+        into one write per pixel.
+        """
+
+        self._pending_write = True
+        if self._write_timeout_id:
+            GLib.source_remove(self._write_timeout_id)
+        self._write_timeout_id = GLib.timeout_add(WRITE_DELAY_MS, self._flush_write)
+
+    def _flush_write(self) -> bool:
+        self._write_timeout_id = 0
+        if self._write_in_flight or not self._available:
+            return GLib.SOURCE_REMOVE
         try:
             configuration = self.current_configuration()
         except ValueError as error:
             self._show_error(str(error))
-            return
-        self._apply_button.set_sensitive(False)
+            return GLib.SOURCE_REMOVE
+        self._pending_write = False
+        self._write_in_flight = True
         self._run_mutation(
             lambda: self._client.set_rgb_configuration(configuration),
             translate("Iluminación aplicada en las 24 zonas."),
-            self._finish_apply,
-            self._apply_failed,
+            self._write_succeeded,
+            self._write_failed_once,
         )
+        return GLib.SOURCE_REMOVE
 
-    def _finish_apply(self) -> None:
-        self._set_editor_dirty(False)
-        self._request_refresh()
+    def _write_succeeded(self) -> None:
+        self._write_in_flight = False
+        self._write_failed = False
+        # An edit made while the helper was busy still has to reach the keyboard.
+        if self._pending_write:
+            self._schedule_write()
+        else:
+            self._request_refresh()
 
-    def _apply_failed(self) -> None:
-        self._sync_apply_button()
+    def _write_failed_once(self) -> None:
+        """Keep the colours on screen so a refresh cannot discard them.
 
-    def _set_editor_dirty(self, dirty: bool) -> None:
-        self._editor_dirty = dirty
-        self._sync_apply_button()
+        Without this the next status poll would overwrite the user's edit with
+        whatever the keyboard last accepted. It does not retry on its own: a
+        failing helper would turn into an endless write loop.
+        """
+
+        self._write_in_flight = False
+        self._write_failed = True
 
     def _set_controls_sensitive(self, sensitive: bool) -> None:
         self._controls_group.set_sensitive(sensitive)
         self._zones_group.set_sensitive(sensitive)
         self._presets_group.set_sensitive(sensitive)
-
-    def _sync_apply_button(self) -> None:
-        self._apply_button.set_sensitive(self._available and self._editor_dirty)
 
 
 def _rounded_rectangle(

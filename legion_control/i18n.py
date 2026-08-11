@@ -1004,6 +1004,29 @@ _ENTRIES: Final = (
     ("completa", "full", "chargée", "已充满", "полная"),
     ("sin cargar", "not charging", "sans charge", "未充电", "не заряжается"),
     ("estado desconocido", "unknown state", "état inconnu", "未知状态", "неизвестное состояние"),
+    ("Hielo", "Ice", "Glace", "冰霜", "Лёд"),
+    ("Bosque", "Forest", "Forêt", "森林", "Лес"),
+    ("Neón", "Neon", "Néon", "霓虹", "Неон"),
+    ("Brasa", "Ember", "Braise", "余烬", "Угли"),
+    ("Nocturno", "Night", "Nuit", "夜间", "Ночь"),
+    ("Ajedrez", "Checker", "Damier", "棋盘", "Шахматы"),
+    ("Versión", "Version", "Version", "版本", "Версия"),
+    ("Aplicar ahora", "Apply now", "Appliquer maintenant", "立即应用", "Применить сейчас"),
+    ("Reiniciar ahora", "Restart now", "Redémarrer maintenant", "立即重启", "Перезапустить сейчас"),
+    (
+        "Reinicia Legion Control · se pierden los cambios sin aplicar",
+        "Restarts Legion Control · unapplied changes are lost",
+        "Redémarre Legion Control · les modifications non appliquées sont perdues",
+        "重启 Legion Control · 未应用的更改将丢失",
+        "Перезапускает Legion Control · несохранённые изменения теряются",
+    ),
+    (
+        "Se aplica solo, poco después de cada cambio",
+        "Applied automatically, shortly after each change",
+        "Appliqué automatiquement, peu après chaque modification",
+        "每次更改后稍候自动生效",
+        "Применяется автоматически, вскоре после каждого изменения",
+    ),
 )
 
 _CATALOGS: Final = {

@@ -16,11 +16,15 @@ from legion_control.rgb import (
     RgbConfiguration,
     _send_feature_reports,
     _validate_open_device,
+    alternating_rgb_configuration,
     gradient_rgb_configuration,
+    rgb_configuration_from_document,
     rgb_configuration_from_json,
     rgb_configuration_to_json,
+    solid_rgb_configuration,
     wave_rgb_configuration,
 )
+from legion_control.ui_lighting import LightingPage
 
 
 class FeatureReportCapture:
@@ -309,6 +313,67 @@ class OpenDeviceValidationTests(unittest.TestCase):
 
         with self.assertRaisesRegex(OSError, "048d:c195"):
             _validate_open_device(42)
+
+
+class StaticPresetTests(unittest.TestCase):
+    """Presets are single frames of the verified transport, never animations."""
+
+    def test_alternating_covers_every_zone_with_two_colours(self) -> None:
+        first = RgbColor(229, 32, 47)
+        second = RgbColor(12, 12, 14)
+
+        configuration = alternating_rgb_configuration(first, second, 70)
+
+        self.assertEqual(len(configuration.zones), RGB_ZONE_COUNT)
+        self.assertEqual(configuration.zones[0], first)
+        self.assertEqual(configuration.zones[1], second)
+        self.assertEqual(configuration.zones[RGB_ZONE_COUNT - 2], first)
+        self.assertEqual(set(configuration.zones), {first, second})
+        self.assertEqual(configuration.brightness_percent, 70)
+        self.assertTrue(configuration.enabled)
+
+    def test_every_lighting_preset_produces_a_valid_full_frame(self) -> None:
+        page_presets = (
+            "_preset_legion",
+            "_preset_white",
+            "_preset_spectrum",
+            "_preset_sunset",
+            "_preset_wave",
+            "_preset_ice",
+            "_preset_forest",
+            "_preset_neon",
+            "_preset_ember",
+            "_preset_night",
+            "_preset_checker",
+        )
+        for name in page_presets:
+            with self.subTest(preset=name):
+                self.assertTrue(hasattr(LightingPage, name))
+
+    def test_new_presets_stay_inside_the_documented_bounds(self) -> None:
+        configurations = {
+            "hielo": gradient_rgb_configuration(
+                RgbColor(79, 216, 245), RgbColor(234, 246, 255), 55
+            ),
+            "bosque": gradient_rgb_configuration(RgbColor(18, 112, 58), RgbColor(156, 224, 91), 60),
+            "neón": gradient_rgb_configuration(RgbColor(255, 47, 176), RgbColor(0, 229, 255), 75),
+            "brasa": gradient_rgb_configuration(RgbColor(140, 16, 7), RgbColor(255, 176, 32), 65),
+            "nocturno": solid_rgb_configuration(RgbColor(255, 155, 61), 15),
+            "ajedrez": alternating_rgb_configuration(
+                RgbColor(229, 32, 47), RgbColor(12, 12, 14), 70
+            ),
+        }
+        for name, configuration in configurations.items():
+            with self.subTest(preset=name):
+                self.assertEqual(len(configuration.zones), RGB_ZONE_COUNT)
+                self.assertTrue(0 <= configuration.brightness_percent <= 100)
+                for zone in configuration.zones:
+                    self.assertTrue(0 <= zone.red <= 255)
+                    self.assertTrue(0 <= zone.green <= 255)
+                    self.assertTrue(0 <= zone.blue <= 255)
+                # A round trip through the stored document must not alter it.
+                restored = rgb_configuration_from_document(configuration.to_dict())
+                self.assertEqual(restored, configuration)
 
 
 if __name__ == "__main__":

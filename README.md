@@ -4,9 +4,11 @@ Native GTK4/libadwaita control center for the Lenovo Legion Pro 5 16IAX10H
 (`83LU`) on Linux.
 
 > [!WARNING]
-> **Status: alpha.** The physical validation behind this project was performed
-> on one unit, with 0.5.0. Version 0.7.0 has not been re-validated against
-> hardware; it was verified with the offline gate and simulated telemetry only.
+> **Status: alpha.** All physical validation comes from one unit. For 0.7.0 it
+> covered the read-only report, platform profiles, fixed RPM, a curve under
+> load, restore-to-firmware, and the 24-zone RGB path including the presets.
+> The emergency thermal paths at 92 °C and 98 °C were not reached, and package
+> installation, upgrade and removal were not exercised.
 > This is not a compatibility promise for another laptop, although truly
 > equivalent units —same `83LU` DMI, BIOS, ITE controller, and WMI attributes—
 > are more likely to behave the same. The application does not expand its

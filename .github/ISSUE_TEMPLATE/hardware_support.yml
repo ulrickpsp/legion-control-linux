@@ -1,0 +1,46 @@
+name: Hardware support evidence
+description: Propose read-only evidence for a new exact model or controller.
+title: "[Hardware]: "
+labels: ["hardware", "needs-evidence"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form does not authorize writes. Never remove the allowlist or replay raw
+        packets. Read CONTRIBUTING.md and docs/HARDWARE-SUPPORT.md first.
+  - type: input
+    id: dmi
+    attributes:
+      label: Exact DMI product name and product version
+      description: Never include any serial-number field.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Distribution, kernel, and BIOS
+    validations:
+      required: true
+  - type: textarea
+    id: interfaces
+    attributes:
+      label: Read-only kernel/controller evidence
+      description: Named drivers, published bounds, USB ID, interface, and sanitized descriptor facts.
+    validations:
+      required: true
+  - type: textarea
+    id: existing
+    attributes:
+      label: What is already known to work?
+      description: Separate read-only detection from physically verified mutation.
+    validations:
+      required: true
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: Safety agreement
+      options:
+        - label: I have performed only read-only discovery for this request.
+          required: true
+        - label: I understand a marketing name or shared USB ID is insufficient.
+          required: true

@@ -1,0 +1,41 @@
+[Unit]
+Description=Legion Control fan curve service
+After=systemd-modules-load.service
+ConditionPathExists=/sys/class/hwmon
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/legion-control-fand
+ExecStopPost=/usr/libexec/legion-control-fand --restore-auto
+Restart=on-failure
+RestartPreventExitStatus=3
+RestartSec=2s
+StateDirectory=legion-control
+StateDirectoryMode=0755
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/legion-control
+ProtectHome=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+InaccessiblePaths=-/etc/shadow -/etc/gshadow
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

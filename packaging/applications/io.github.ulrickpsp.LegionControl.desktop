@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Legion Control
+Comment=Controla perfiles, ventiladores y funciones de tu Lenovo Legion
+Exec=legion-control
+Icon=io.github.ulrickpsp.LegionControl
+Terminal=false
+Type=Application
+Categories=Settings;HardwareSettings;
+Keywords=Lenovo;Legion;fan;ventilador;thermal;térmico;battery;batería;
+StartupNotify=true
+DBusActivatable=false

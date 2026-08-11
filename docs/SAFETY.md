@@ -1,0 +1,150 @@
+# Hardware Safety
+
+Legion Control is a userspace control tool, not a replacement for laptop
+firmware, thermal protection, or responsible monitoring. It has been physically
+tested on one Lenovo Legion Pro 5 16IAX10H (`83LU`) configuration. Using it can
+still expose firmware, kernel, driver, or application defects.
+
+If cooling becomes uncertain, stop heavy workloads and return fan control to
+firmware immediately. Do not keep testing to obtain better logs.
+
+## Safety boundary
+
+Mutating operations require all applicable checks:
+
+- DMI product name exactly `83LU`;
+- expected Lenovo WMI/sysfs interfaces discovered by driver identity;
+- hardware-published bounds and steps for fan and power values;
+- for RGB, USB `048d:c195`, interface `00`, vendor usage page `0xFF89`, usage
+  `0x07`, and report ID `0x07`;
+- administrator authorization through the installed PolicyKit action.
+
+The GTK application remains unprivileged. It invokes a fixed root-owned helper
+with a closed command grammar. The helper accepts no filesystem path or shell
+fragment from the UI. The package does not install a permissive HID udev rule,
+a third-party kernel module, or a firmware component.
+
+Do not bypass any identity check. A shared marketing name, USB ID, or similar
+sysfs layout does not prove compatible write semantics.
+
+## Thermal policy
+
+Manual fixed-RPM and curve modes run in a root systemd service with a two-second
+control interval. The policy uses the hotter available CPU/GPU temperature.
+
+| Condition | Behavior |
+|---|---|
+| Normal curve operation | Validate, interpolate, quantize, and apply equal targets to both fans. |
+| At or above 92 °C | Bypass normal filtering and request the hardware-published maximum RPM. |
+| At or above 98 °C | Do not write another manual target; exit with status `3` and restore firmware control. |
+| No trustworthy CPU or GPU temperature | Exit with status `3` and restore firmware control. |
+| Target write failure or daemon exception | Attempt firmware restoration in the daemon's `finally` path. |
+| Service stop | Run a second restoration through systemd `ExecStopPost`. |
+
+Firmware control is restored by writing `0` to both Lenovo fan-target
+attributes. The service unit does not restart after the deliberate thermal exit
+status `3`. Other unexpected failures may be restarted by systemd; each daemon
+attempt still executes its restoration path.
+
+When one fan-target write fails, the adapter attempts to restore both targets.
+Package removal disables and stops the service and then attempts a direct
+firmware restoration before files are removed. Installing the package does not
+enable manual fan control.
+
+## Power and platform profiles
+
+Custom power writes are permitted only in the `custom` platform profile and
+only within the minimum, maximum, and step values published by the Lenovo
+kernel interface. Values are read back after writes. The helper snapshots the
+previous profile and power values and attempts rollback if combined Custom
+activation fails.
+
+Rollback is best effort. Kernel, firmware, device, power-loss, or process
+failure can prevent recovery code from completing. Always verify the displayed
+profile and power state after an error.
+
+## RGB safety
+
+RGB output is limited to one exact controller path and fixed-size feature
+reports. The helper serializes privileged operations, validates a versioned
+24-zone document, keeps one HID file descriptor open for the sequence, uses a
+10 ms inter-report delay, and persists public state only after all ioctls report
+success.
+
+Important limitations:
+
+- Applying lighting writes controller profile `1` and may replace the lighting
+  previously stored in that profile.
+- `Fn+Space` can select another firmware lighting profile or effect after the
+  application writes its configuration.
+- The controller provides no trustworthy semantic readback for the complete
+  static configuration. An accepted ioctl proves transport success, not that
+  every LED visibly changed.
+- Static colors and off are implemented. Animated effects are intentionally
+  outside the current scope.
+- A disconnect or controller stall remains possible, but a replaced hidraw node
+  is rejected by revalidating VID/PID and descriptor from the opened FD.
+
+See [`RGB-PROTOCOL.md`](RGB-PROTOCOL.md) for the exact observed framing.
+
+## Known limits of the safety model
+
+- Userspace recovery cannot run during a kernel hang, abrupt power loss, or
+  complete system lockup.
+- The current release checks accepted target writes but does not yet implement
+  a sustained fan-response/stall watchdog.
+- Suspend/resume with a manual curve and sustained combined CPU/GPU load are
+  not yet part of the published physical-validation evidence.
+- Only one `83LU` unit, running Ubuntu 26.04, Linux 7.0, and BIOS `Q6CN79WW`,
+  has been physically validated.
+- A future BIOS or kernel may change an otherwise matching interface.
+
+These limitations are reasons to monitor initial use, not invitations to weaken
+the checks.
+
+## Emergency recovery
+
+Prefer the application's **Auto / return to firmware** action. If the UI is not
+available, use the installed service and helper:
+
+```bash
+sudo systemctl disable --now legion-control-fand.service
+sudo /usr/libexec/legion-control-fand --restore-auto
+```
+
+Both commands change system state. The first prevents the manual service from
+starting automatically and triggers its stop restoration. The second directly
+writes `0` to both supported fan targets.
+
+Verify the Lenovo target files without writing to them:
+
+```bash
+for directory in /sys/class/hwmon/hwmon*; do
+  if [ "$(cat "$directory/name" 2>/dev/null)" = "lenovo_wmi_other" ]; then
+    printf '%s\n' "fan1_target=$(cat "$directory/fan1_target" 2>/dev/null)"
+    printf '%s\n' "fan2_target=$(cat "$directory/fan2_target" 2>/dev/null)"
+  fi
+done
+```
+
+The expected firmware-controlled value is `0` for both targets. If restoration
+fails, targets remain nonzero, a fan stops responding, or temperatures continue
+to rise:
+
+1. stop CPU/GPU-intensive work;
+2. save unrelated work if it is safe to do so;
+3. shut the laptop down rather than continuing diagnostics;
+4. use firmware/OEM recovery and hardware service as appropriate.
+
+Do not compensate by writing guessed RPM, WMI, ACPI, or HID values.
+
+## Responsible physical testing
+
+Before a hardware test, write down the starting profile, power limits, fan
+targets, observed fan RPM, and recovery command. Use bounded changes, observe
+both fans and temperatures, test one behavior at a time, and finish with both
+targets at `0`. Never leave an unattended manual curve active during initial
+validation.
+
+This project is independent and is not affiliated with, endorsed by, or
+supported by Lenovo.

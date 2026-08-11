@@ -1,0 +1,23 @@
+#!/bin/sh
+set -e
+
+RESTART_MARKER=/run/legion-control-fand.restart-after-upgrade
+
+install -d -m 0755 /var/lib/legion-control
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+fi
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+
+if [ -f "$RESTART_MARKER" ]; then
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable --now legion-control-fand.service || true
+    fi
+    rm -f "$RESTART_MARKER"
+fi
+
+exit 0

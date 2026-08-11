@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+RESTART_MARKER=/run/legion-control-fand.restart-after-upgrade
+
+if [ "$1" = "upgrade" ] && command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-active --quiet legion-control-fand.service; then
+        install -m 0600 /dev/null "$RESTART_MARKER" || true
+    fi
+else
+    rm -f "$RESTART_MARKER"
+fi
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable --now legion-control-fand.service || true
+fi
+
+if [ -x /usr/libexec/legion-control-fand ]; then
+    /usr/libexec/legion-control-fand --restore-auto || true
+fi
+
+exit 0

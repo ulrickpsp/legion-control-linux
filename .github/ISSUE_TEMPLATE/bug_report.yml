@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible problem on the supported 83LU hardware or in mock mode.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include serial numbers, private paths, or vulnerability details.
+        If cooling is uncertain, restore firmware control before collecting logs.
+  - type: input
+    id: version
+    attributes:
+      label: Legion Control version
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Sanitized environment
+      description: Exact DMI product code, Ubuntu release, kernel, and BIOS.
+      placeholder: "83LU; Ubuntu 26.04; Linux 7.0; Q6CN79WW"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - UI or mock mode
+        - Fan or thermal control
+        - Platform profile or power
+        - RGB keyboard
+        - Device switch
+        - Installation, upgrade, or removal
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+      description: Explain the smallest reproducible sequence and what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized bounded logs
+      description: Paste text, not a screenshot. Remove serials and unrelated output.
+      render: text
+  - type: input
+    id: final_state
+    attributes:
+      label: Final fan-control state
+      description: Report fan1_target/fan2_target, or say why this is not applicable.
+      placeholder: "0 / 0"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I did not bypass the product/controller allowlist.
+          required: true
+        - label: This report contains no vulnerability details or private identifiers.
+          required: true

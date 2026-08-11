@@ -63,6 +63,19 @@ Rollback is best effort. Kernel, firmware, device, power-loss, or process
 failure can prevent recovery code from completing. Always verify the displayed
 profile and power state after an error.
 
+## Scene automation and alerts
+
+AC/battery automation is off by default, is configured in the unprivileged
+user session, and runs only while the application remains open. It reacts only
+to a detected source transition, never on initial startup. Each selected scene
+still uses the existing bounded PolicyKit helper, hardware allowlist, and
+readback rules; do not enable it until its saved scene is appropriate for both
+contexts.
+
+Temperature alerts are read-only notifications. They do not alter fan, power,
+profile, or RGB state. At elevated or critical temperature, reduce workload and
+use the explicit firmware-restore action if cooling ownership is uncertain.
+
 ## RGB safety
 
 RGB output is limited to one exact controller path and fixed-size feature
@@ -80,12 +93,16 @@ Important limitations:
 - The controller provides no trustworthy semantic readback for the complete
   static configuration. An accepted ioctl proves transport success, not that
   every LED visibly changed.
-- Static colors and off are implemented. Animated effects are intentionally
-  outside the current scope.
+- Static colors, off, gradients, and waves are implemented. Animated firmware
+  effects are intentionally outside the current scope.
 - A disconnect or controller stall remains possible, but a replaced hidraw node
   is rejected by revalidating VID/PID and descriptor from the opened FD.
 
 See [`RGB-PROTOCOL.md`](RGB-PROTOCOL.md) for the exact observed framing.
+
+Gradient and wave presets are static 24-zone frames encoded with that same
+verified profile `1` sequence. They do not use animation/effect commands and
+must not be represented as firmware animation support.
 
 ## Known limits of the safety model
 

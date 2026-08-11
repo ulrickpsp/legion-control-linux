@@ -46,9 +46,7 @@ CONFIG_PATH: Final = FAN_CONFIG_PATH
 SYSTEMCTL: Final = SYSTEMCTL_PATH
 SERVICE_NAME: Final = FAN_SERVICE_NAME
 CONTROL_LOCK_TIMEOUT_SECONDS: Final = 15.0
-ALLOWED_PROFILES: Final = frozenset(
-    {"low-power", "balanced", "performance", "max-power", "custom"}
-)
+ALLOWED_PROFILES: Final = frozenset({"low-power", "balanced", "performance", "max-power", "custom"})
 
 
 class HelperError(RuntimeError):
@@ -158,9 +156,7 @@ class PrivilegedController:
         power_limits: CustomPowerLimits,
     ) -> dict[str, object]:
         if policy.mode is FanMode.AUTO:
-            raise HelperError(
-                "Una configuración Custom necesita RPM fija o curva."
-            )
+            raise HelperError("Una configuración Custom necesita RPM fija o curva.")
         bounds = self.hardware.fan_bounds()
         policy.validate_for(bounds)
         power_limits.validate_for(self.hardware.power_capabilities())
@@ -180,8 +176,7 @@ class PrivilegedController:
             )
             if recovery_errors:
                 raise HelperError(
-                    "Falló Custom y la recuperación no fue completa: "
-                    + " ".join(recovery_errors)
+                    "Falló Custom y la recuperación no fue completa: " + " ".join(recovery_errors)
                 )
             raise
         return {
@@ -206,9 +201,7 @@ class PrivilegedController:
         if self.rgb_hardware is None or self.rgb_store is None:
             raise HelperError("El soporte RGB no está instalado.")
         if not self.rgb_hardware.is_available():
-            raise HelperError(
-                "No aparece el teclado RGB 048d:c195 en la interfaz esperada."
-            )
+            raise HelperError("No aparece el teclado RGB 048d:c195 en la interfaz esperada.")
         try:
             self.rgb_hardware.apply(configuration)
         except (RgbHardwareError, OSError, ValueError) as error:
@@ -299,9 +292,7 @@ def main(arguments: list[str] | None = None) -> int:
     return 0
 
 
-def _dispatch(
-    controller: PrivilegedController, arguments: list[str]
-) -> dict[str, object]:
+def _dispatch(controller: PrivilegedController, arguments: list[str]) -> dict[str, object]:
     if arguments == ["status"]:
         return controller.status()
     if len(arguments) == 2 and arguments[0] == "set-profile":
@@ -314,16 +305,10 @@ def _dispatch(
             power_limits_from_json(arguments[2]),
         )
     if len(arguments) == 2 and arguments[0] == "set-rgb-config":
-        return controller.set_rgb_configuration(
-            rgb_configuration_from_json(arguments[1])
-        )
+        return controller.set_rgb_configuration(rgb_configuration_from_json(arguments[1]))
     if arguments == ["restore-auto"]:
         return controller.restore_auto()
-    if (
-        len(arguments) == 3
-        and arguments[0] == "set-feature"
-        and arguments[2] in {"0", "1"}
-    ):
+    if len(arguments) == 3 and arguments[0] == "set-feature" and arguments[2] in {"0", "1"}:
         return controller.set_feature(arguments[1], arguments[2] == "1")
     raise HelperError("Orden no admitida.")
 

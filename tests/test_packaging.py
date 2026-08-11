@@ -47,9 +47,7 @@ class PackagingSafetyTests(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, readme)
 
-        metainfo = _read(
-            "packaging/metainfo/io.github.ulrickpsp.LegionControl.metainfo.xml"
-        )
+        metainfo = _read("packaging/metainfo/io.github.ulrickpsp.LegionControl.metainfo.xml")
         self.assertIn("Controles alpha para el Lenovo Legion 83LU", metainfo)
         self.assertIn("una sola unidad", metainfo)
 

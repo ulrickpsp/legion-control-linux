@@ -24,9 +24,7 @@ from legion_control.rgb import (
 class MockControlClient:
     profile: str = "performance"
     policy: FanPolicy = field(default_factory=default_policy)
-    power_limits: CustomPowerLimits = field(
-        default_factory=lambda: CustomPowerLimits(70, 125)
-    )
+    power_limits: CustomPowerLimits = field(default_factory=lambda: CustomPowerLimits(70, 125))
     rgb_configuration: RgbConfiguration = field(
         default_factory=lambda: solid_rgb_configuration(
             RgbColor(229, 32, 47),

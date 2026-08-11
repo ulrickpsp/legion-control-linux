@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import colorsys
 import errno
 import fcntl
 import json
@@ -33,9 +34,7 @@ SUPPORTED_INTERFACE: Final = "00"
 SUPPORTED_DESCRIPTOR_SIGNATURE: Final = bytes(
     (0x06, 0x89, 0xFF, 0x09, 0x07, 0xA1, 0x01, 0x85, RGB_REPORT_ID)
 )
-EXPECTED_RGB_KEYS: Final = frozenset(
-    {"version", "enabled", "brightness_percent", "zones"}
-)
+EXPECTED_RGB_KEYS: Final = frozenset({"version", "enabled", "brightness_percent", "zones"})
 EXPECTED_COLOR_KEYS: Final = frozenset({"red", "green", "blue"})
 
 FeatureReportWriter = Callable[[Path, tuple[bytes, ...]], None]
@@ -103,9 +102,7 @@ class RgbConfigStore:
             return None
         if self.path.stat().st_size > MAX_RGB_CONFIG_BYTES:
             raise ValueError("La configuración RGB es demasiado grande.")
-        return rgb_configuration_from_json(
-            self.path.read_text(encoding="utf-8")
-        )
+        return rgb_configuration_from_json(self.path.read_text(encoding="utf-8"))
 
     def save(self, configuration: RgbConfiguration) -> None:
         self.path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -146,9 +143,7 @@ class LegionRgbHardware:
     ) -> None:
         self._root = root.resolve()
         self._sys_root = (self._root / "sys").resolve()
-        self._feature_report_writer = (
-            feature_report_writer or _send_feature_reports
-        )
+        self._feature_report_writer = feature_report_writer or _send_feature_reports
 
     def is_available(self) -> bool:
         return self._is_supported_product() and self._device_path() is not None
@@ -158,9 +153,7 @@ class LegionRgbHardware:
             raise RgbHardwareError("El RGB solo está habilitado para el modelo 83LU.")
         device = self._device_path()
         if device is None:
-            raise RgbHardwareError(
-                "No aparece el controlador RGB Lenovo/ITE 048d:c195."
-            )
+            raise RgbHardwareError("No aparece el controlador RGB Lenovo/ITE 048d:c195.")
         reports = (
             _static_reports(configuration.zones, configuration.brightness_percent)
             if configuration.enabled and configuration.brightness_percent > 0
@@ -174,9 +167,7 @@ class LegionRgbHardware:
             ) from error
 
     def _is_supported_product(self) -> bool:
-        product_path = (
-            self._root / "sys/devices/virtual/dmi/id/product_name"
-        )
+        product_path = self._root / "sys/devices/virtual/dmi/id/product_name"
         try:
             return product_path.read_text(encoding="utf-8").strip() == SUPPORTED_PRODUCT
         except OSError:
@@ -194,9 +185,7 @@ class LegionRgbHardware:
                 continue
             if _interface_number(resolved, self._sys_root) != SUPPORTED_INTERFACE:
                 continue
-            if SUPPORTED_DESCRIPTOR_SIGNATURE not in _read_bytes(
-                resolved / "report_descriptor"
-            ):
+            if SUPPORTED_DESCRIPTOR_SIGNATURE not in _read_bytes(resolved / "report_descriptor"):
                 continue
             device = self._root / "dev" / entry.name
             if device.exists():
@@ -215,6 +204,47 @@ def solid_rgb_configuration(
         brightness_percent=brightness_percent,
         zones=(color,) * RGB_ZONE_COUNT,
     )
+
+
+def gradient_rgb_configuration(
+    start: RgbColor,
+    end: RgbColor,
+    brightness_percent: int,
+    *,
+    enabled: bool = True,
+) -> RgbConfiguration:
+    """Create a static 24-zone gradient using only the verified transport."""
+
+    if RGB_ZONE_COUNT < 2:
+        raise ValueError("El teclado RGB necesita al menos dos zonas.")
+    zones = tuple(
+        RgbColor(
+            round(start.red + (end.red - start.red) * index / (RGB_ZONE_COUNT - 1)),
+            round(start.green + (end.green - start.green) * index / (RGB_ZONE_COUNT - 1)),
+            round(start.blue + (end.blue - start.blue) * index / (RGB_ZONE_COUNT - 1)),
+        )
+        for index in range(RGB_ZONE_COUNT)
+    )
+    return RgbConfiguration(enabled, brightness_percent, zones)
+
+
+def wave_rgb_configuration(
+    brightness_percent: int,
+    *,
+    enabled: bool = True,
+) -> RgbConfiguration:
+    """Create one static spectrum frame; it does not send unverified animation commands."""
+
+    zones = tuple(
+        RgbColor(
+            round(red * 255),
+            round(green * 255),
+            round(blue * 255),
+        )
+        for index in range(RGB_ZONE_COUNT)
+        for red, green, blue in (colorsys.hsv_to_rgb(index / RGB_ZONE_COUNT, 0.92, 1.0),)
+    )
+    return RgbConfiguration(enabled, brightness_percent, zones)
 
 
 def default_rgb_configuration() -> RgbConfiguration:
@@ -291,9 +321,7 @@ def _require_integer(value: object, name: str) -> int:
     return value
 
 
-def _static_reports(
-    colors: tuple[RgbColor, ...], brightness_percent: int
-) -> tuple[bytes, ...]:
+def _static_reports(colors: tuple[RgbColor, ...], brightness_percent: int) -> tuple[bytes, ...]:
     return (
         _switch_profile_report(),
         _save_profile_report(colors),
@@ -337,9 +365,7 @@ def _save_profile_report(colors: tuple[RgbColor, ...]) -> bytes:
     return bytes(packet)
 
 
-def _encode_static_group(
-    group_index: int, color: RgbColor, led_ids: list[int]
-) -> bytes:
+def _encode_static_group(group_index: int, color: RgbColor, led_ids: list[int]) -> bytes:
     payload = bytearray(
         (
             group_index + 1,
@@ -388,8 +414,7 @@ def _turn_off_report() -> bytes:
 
 def _send_feature_reports(device: Path, reports: tuple[bytes, ...]) -> None:
     if not reports or any(
-        len(report) != RGB_FEATURE_REPORT_SIZE or report[0] != RGB_REPORT_ID
-        for report in reports
+        len(report) != RGB_FEATURE_REPORT_SIZE or report[0] != RGB_REPORT_ID for report in reports
     ):
         raise ValueError("Informe RGB Lenovo/ITE inválido.")
     with _RGB_REPORT_LOCK:
@@ -405,9 +430,7 @@ def _send_feature_reports(device: Path, reports: tuple[bytes, ...]) -> None:
                     True,
                 )
                 if written != len(report):
-                    raise OSError(
-                        f"Escritura HID incompleta: {written} de {len(report)} bytes."
-                    )
+                    raise OSError(f"Escritura HID incompleta: {written} de {len(report)} bytes.")
                 time.sleep(RGB_REPORT_DELAY_SECONDS)
         finally:
             os.close(descriptor)

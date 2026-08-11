@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -152,19 +151,13 @@ class SysfsHardware:
         battery_directory = self._root / "sys/class/power_supply/BAT0"
         return StatusReport(
             capabilities=capabilities,
-            profile=self._read_optional_text(
-                self._profile_file("profile", required=False)
-            ),
+            profile=self._read_optional_text(self._optional_profile_file("profile")),
             cpu_temperature_c=self._read_cpu_temperature(),
             gpu_temperature_c=self._read_gpu_temperature(),
             fan1_rpm=self._read_optional_integer(self._child(fan_directory, "fan1_input")),
             fan2_rpm=self._read_optional_integer(self._child(fan_directory, "fan2_input")),
-            fan1_target_rpm=self._read_optional_integer(
-                self._child(fan_directory, "fan1_target")
-            ),
-            fan2_target_rpm=self._read_optional_integer(
-                self._child(fan_directory, "fan2_target")
-            ),
+            fan1_target_rpm=self._read_optional_integer(self._child(fan_directory, "fan1_target")),
+            fan2_target_rpm=self._read_optional_integer(self._child(fan_directory, "fan2_target")),
             power_limits=self._read_power_limits(),
             battery_percent=self._read_optional_integer(battery_directory / "capacity"),
             battery_status=self._read_optional_text(battery_directory / "status"),
@@ -179,8 +172,7 @@ class SysfsHardware:
         cpu_temperature = self._read_cpu_temperature()
         gpu_temperature = (
             None
-            if cpu_temperature is not None
-            and cpu_temperature >= EMERGENCY_FULL_SPEED_C
+            if cpu_temperature is not None and cpu_temperature >= EMERGENCY_FULL_SPEED_C
             else self._read_gpu_temperature()
         )
         fan_directory = self._paths.fan_hwmon
@@ -234,9 +226,7 @@ class SysfsHardware:
         if errors:
             detail = self._fan_restore_detail()
             raise HardwareError(
-                "No se pudieron fijar ambos ventiladores: "
-                + " ".join(errors)
-                + detail
+                "No se pudieron fijar ambos ventiladores: " + " ".join(errors) + detail
             )
         observed = (
             self._read_optional_integer(fan_directory / "fan1_target"),
@@ -244,10 +234,7 @@ class SysfsHardware:
         )
         if observed != (fan1, fan2):
             detail = self._fan_restore_detail()
-            raise HardwareError(
-                "El firmware no confirmó ambos objetivos de ventilador."
-                + detail
-            )
+            raise HardwareError("El firmware no confirmó ambos objetivos de ventilador." + detail)
 
     def power_capabilities(self) -> PowerLimitCapabilities:
         capabilities = self._power_capabilities_or_none()
@@ -264,9 +251,7 @@ class SysfsHardware:
     def set_power_limits(self, limits: CustomPowerLimits) -> None:
         self.require_supported()
         if self._read_optional_text(self._profile_file("profile")) != "custom":
-            raise HardwareError(
-                "Los límites de potencia solo pueden escribirse en perfil Custom."
-            )
+            raise HardwareError("Los límites de potencia solo pueden escribirse en perfil Custom.")
         capabilities = self.power_capabilities()
         limits.validate_for(capabilities)
         previous = self._read_power_limits()
@@ -282,13 +267,9 @@ class SysfsHardware:
         except HardwareError as error:
             rollback_errors = self._restore_power_limits(previous)
             detail = (
-                f" Restauración incompleta: {' '.join(rollback_errors)}"
-                if rollback_errors
-                else ""
+                f" Restauración incompleta: {' '.join(rollback_errors)}" if rollback_errors else ""
             )
-            raise HardwareError(
-                f"No se aplicaron ambos límites de potencia.{detail}"
-            ) from error
+            raise HardwareError(f"No se aplicaron ambos límites de potencia.{detail}") from error
 
     def restore_firmware_control(self) -> None:
         fan_directory = self._paths.fan_hwmon
@@ -367,10 +348,11 @@ class SysfsHardware:
                 "default_value",
             )
         )
-        if any(value is None for value in values):
+        minimum, maximum, increment, default = values
+        if minimum is None or maximum is None or increment is None or default is None:
             return None
         try:
-            return PowerLimitBounds(*(int(value) for value in values))
+            return PowerLimitBounds(minimum, maximum, increment, default)
         except ValueError:
             return None
 
@@ -386,9 +368,7 @@ class SysfsHardware:
 
     def _read_power_value(self, name: str) -> int | None:
         directory = self._power_attribute(name)
-        return self._read_optional_integer(
-            directory / "current_value" if directory else None
-        )
+        return self._read_optional_integer(directory / "current_value" if directory else None)
 
     def _write_power_value(self, name: str, value: int) -> None:
         directory = self._power_attribute(name)
@@ -420,15 +400,18 @@ class SysfsHardware:
         return directory if directory.is_dir() else None
 
     def _profile_choices(self) -> tuple[str, ...]:
-        choices = self._read_optional_text(self._profile_file("choices", required=False))
+        choices = self._read_optional_text(self._optional_profile_file("choices"))
         return tuple(choices.split()) if choices else ()
 
-    def _profile_file(self, filename: str, required: bool = True) -> Path | None:
-        directory = self._paths.platform_profile
-        path = directory / filename if directory else None
-        if required and (path is None or not path.exists()):
+    def _profile_file(self, filename: str) -> Path:
+        path = self._optional_profile_file(filename)
+        if path is None or not path.exists():
             raise HardwareError("No existe el perfil lenovo-wmi-gamezone.")
         return path
+
+    def _optional_profile_file(self, filename: str) -> Path | None:
+        directory = self._paths.platform_profile
+        return directory / filename if directory else None
 
     def _read_cpu_temperature(self) -> int | None:
         candidates: list[int] = []
@@ -437,9 +420,9 @@ class SysfsHardware:
             if name not in {"coretemp", "k10temp", "zenpower"}:
                 continue
             for input_file in directory.glob("temp*_input"):
-                label = self._read_optional_text(input_file.with_name(
-                    input_file.name.replace("_input", "_label")
-                ))
+                label = self._read_optional_text(
+                    input_file.with_name(input_file.name.replace("_input", "_label"))
+                )
                 if label in {"Package id 0", "Tctl", "Tdie"}:
                     value = self._read_optional_integer(input_file)
                     if value is not None:
@@ -479,11 +462,7 @@ class SysfsHardware:
             )
         except (OSError, subprocess.SubprocessError):
             return None
-        values = [
-            int(line)
-            for line in result.stdout.splitlines()
-            if line.strip().isdigit()
-        ]
+        values = [int(line) for line in result.stdout.splitlines() if line.strip().isdigit()]
         return max(values, default=None)
 
     def _read_feature(self, feature: str) -> bool | None:

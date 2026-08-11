@@ -62,9 +62,7 @@ class ReleaseGateContractTests(unittest.TestCase):
 
     def test_release_gate_stays_offline_and_unprivileged(self) -> None:
         gate = _read("scripts/check.sh")
-        forbidden_commands = re.compile(
-            r"(?m)^\s*(?:sudo|pkexec|apt|apt-get|curl|wget)(?:\s|$)"
-        )
+        forbidden_commands = re.compile(r"(?m)^\s*(?:sudo|pkexec|apt|apt-get|curl|wget)(?:\s|$)")
         self.assertIsNone(forbidden_commands.search(gate))
         self.assertNotIn("dpkg --install", gate)
         self.assertNotIn("dpkg -i", gate)

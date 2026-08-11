@@ -4,6 +4,45 @@ All notable changes to Legion Control are documented here. The project follows
 [Semantic Versioning](https://semver.org/) while the public API and hardware
 support surface mature.
 
+## 0.6.0 — 2026-08-11
+
+### Added
+
+- Read-only Doctor page and terminal report (`legion-control doctor`) with
+  copy/save support output.
+- Seven-day local telemetry archive, 10 min/24 h/7 day views, change markers,
+  and CSV export; samples are limited to one persisted record every 30 seconds.
+- Opt-in, transition-only AC/battery scene automation while the UI stays open.
+- Elevated/critical temperature notifications that never mutate hardware state.
+- Optional StatusNotifier tray state and terminal status, scene, and
+  restore-firmware workflows.
+- Static 24-zone RGB wave and gradient presets using only the physically
+  verified static ITE report sequence.
+- English, Spanish, French, Simplified Chinese, and Russian interface
+  localization with system-locale detection and a persistent in-app selector.
+- Accessible names for every interactive control, checked against the live
+  AT-SPI tree by the test suite.
+- Optional `ruff` and `pyright` steps in the release gate, plus
+  `scripts/dev-tools.sh` to install that tooling without administrator rights.
+
+### Fixed
+
+- CSV export and the Doctor report's save and copy actions, which failed
+  silently inside their signal handlers on GTK4 APIs that do not exist there.
+- Telemetry archive erasing itself once it passed its size budget, discarding
+  up to seven days of history.
+- View switcher truncating a tab label at 1366x768; the header now sheds its
+  brand text and then moves navigation into a bottom switcher bar.
+- Legend and graph contrast in the light colour scheme, which fell to 2.05:1.
+- Doctor summary stretching the full row width, and short report values
+  wrapping mid-token.
+- A possibly-missing platform-profile path reaching the privileged writer.
+
+### Changed
+
+- Preference pages use a desktop content width instead of the 600px clamp
+  libadwaita applies for phone-sized windows.
+
 ## 0.5.0 — 2026-08-11
 
 ### Added

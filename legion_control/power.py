@@ -9,9 +9,7 @@ from typing import Any, Final
 
 POWER_CONFIG_VERSION: Final = 1
 MAX_POWER_CONFIG_BYTES: Final = 1024
-EXPECTED_POWER_KEYS: Final = frozenset(
-    {"version", "sustained_w", "slow_w"}
-)
+EXPECTED_POWER_KEYS: Final = frozenset({"version", "sustained_w", "slow_w"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,9 +69,7 @@ class CustomPowerLimits:
         if self.sustained_w <= 0 or self.slow_w <= 0:
             raise ValueError("Cada límite de potencia debe ser positivo.")
         if self.slow_w < self.sustained_w:
-            raise ValueError(
-                "La potencia lenta no puede ser menor que la potencia sostenida."
-            )
+            raise ValueError("La potencia lenta no puede ser menor que la potencia sostenida.")
 
     def validate_for(self, capabilities: PowerLimitCapabilities) -> None:
         if not capabilities.sustained.contains(self.sustained_w):
@@ -123,9 +119,7 @@ def power_limits_from_json(payload: str) -> CustomPowerLimits:
     if frozenset(document) != EXPECTED_POWER_KEYS:
         raise ValueError("La configuración de potencia contiene claves incorrectas.")
     if document["version"] != POWER_CONFIG_VERSION:
-        raise ValueError(
-            f"Solo se admite potencia versión {POWER_CONFIG_VERSION}."
-        )
+        raise ValueError(f"Solo se admite potencia versión {POWER_CONFIG_VERSION}.")
     return CustomPowerLimits(
         sustained_w=_require_integer(document["sustained_w"]),
         slow_w=_require_integer(document["slow_w"]),

@@ -31,6 +31,16 @@ LEGION_CONTROL_MOCK=1 python3 -m legion_control.ui
 Mock mode is the default development path. It avoids privileged and hardware
 writes.
 
+Lint and type checking are optional; the release gate skips them when they are
+missing. Install them into your own prefix, without administrator rights:
+
+```bash
+./scripts/dev-tools.sh
+```
+
+That installs `ruff` and `pyright`, plus the PyGObject type stubs that pyright
+needs to see GTK, libadwaita and GLib.
+
 ## Tests
 
 Run the headless suite:
@@ -47,6 +57,15 @@ Compile all Python modules:
 ```bash
 python3 -m compileall -q legion_control tests
 ```
+
+Lint, format and type-check:
+
+```bash
+ruff check legion_control tests && ruff format --check legion_control tests && pyright
+```
+
+`tests/test_a11y_names.py` starts the application and reads its accessibility
+tree over AT-SPI, so it needs a graphical session; it skips elsewhere.
 
 GTK widget tests require a real Wayland or X11 display. On a graphical Linux
 session, run:

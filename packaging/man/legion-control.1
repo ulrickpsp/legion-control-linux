@@ -1,8 +1,22 @@
-.TH LEGION-CONTROL 1 "2026-08-11" "Legion Control 0.5.0" "User Commands"
+.TH LEGION-CONTROL 1 "2026-08-11" "Legion Control 0.6.0" "User Commands"
 .SH NAME
 legion-control \- native controls for the supported Lenovo Legion 83LU
 .SH SYNOPSIS
 .B legion-control
+.br
+.B legion-control
+.B status
+.br
+.B legion-control
+.B doctor
+.RB [ --json ]
+.br
+.B legion-control
+.B scene
+.IR silence | work | game
+.br
+.B legion-control
+.B restore-firmware
 .SH DESCRIPTION
 .B legion-control
 starts the unprivileged GTK4 interface. Hardware mutations are delegated to a
@@ -12,6 +26,18 @@ product 83LU (Legion Pro 5 16IAX10H).
 The application controls platform profiles, validated fan modes, bounded Custom
 CPU power, selected device switches, and the exact ITE 048d:c195 24-zone RGB
 keyboard endpoint. It installs no DKMS module and performs no network access.
+.PP
+.B status
+and
+.B doctor
+are read-only terminal workflows. The latter emits a human-readable support
+report, or JSON with
+.BR --json .
+.B scene
+applies a saved local scene and
+.B restore-firmware
+stops manual fan control. Both mutation commands use the same PolicyKit helper
+and hardware allowlist as the GTK interface.
 .SH SAFETY
 Do not bypass product or controller checks. At 98 degrees Celsius, or when no
 trustworthy temperature is available, the fan daemon returns control to
@@ -29,6 +55,13 @@ Last RGB configuration accepted by the helper; not semantic hardware readback.
 .TP
 .I ~/.config/legion-control/scenes.json
 User-owned quick scenes.
+.TP
+.I ~/.config/legion-control/automation.json
+User-owned opt-in AC/battery scene automation. It reacts only while the GTK
+application is open.
+.TP
+.I ~/.local/state/legion-control/telemetry.jsonl
+Bounded seven-day local telemetry archive. Set XDG_STATE_HOME to relocate it.
 .SH SEE ALSO
 .BR systemctl (1),
 .BR pkexec (1)

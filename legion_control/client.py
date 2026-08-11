@@ -73,9 +73,7 @@ class LocalControlClient:
         rgb_configuration = _read_public_rgb_configuration()
         status["rgb_configuration_known"] = rgb_configuration is not None
         status["rgb_configuration"] = (
-            rgb_configuration.to_dict()
-            if rgb_configuration is not None
-            else None
+            rgb_configuration.to_dict() if rgb_configuration is not None else None
         )
         return status
 
@@ -127,9 +125,7 @@ class LocalControlClient:
                     "DISPLAY": os.environ.get("DISPLAY", ""),
                     "WAYLAND_DISPLAY": os.environ.get("WAYLAND_DISPLAY", ""),
                     "XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR", ""),
-                    "DBUS_SESSION_BUS_ADDRESS": os.environ.get(
-                        "DBUS_SESSION_BUS_ADDRESS", ""
-                    ),
+                    "DBUS_SESSION_BUS_ADDRESS": os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""),
                 },
             )
         except subprocess.TimeoutExpired as error:
@@ -168,9 +164,7 @@ def _read_public_policy() -> dict[str, object]:
 
 def _read_public_rgb_configuration() -> RgbConfiguration | None:
     try:
-        return rgb_configuration_from_json(
-            RGB_CONFIG_PATH.read_text(encoding="utf-8")
-        )
+        return rgb_configuration_from_json(RGB_CONFIG_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 

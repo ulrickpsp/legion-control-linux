@@ -91,8 +91,7 @@ class FanCurve:
         for point in self.points:
             if not bounds.minimum_rpm <= point.rpm <= bounds.maximum_rpm:
                 raise DomainError(
-                    f"{point.rpm} RPM queda fuera de "
-                    f"{bounds.minimum_rpm}–{bounds.maximum_rpm} RPM."
+                    f"{point.rpm} RPM queda fuera de {bounds.minimum_rpm}–{bounds.maximum_rpm} RPM."
                 )
             if bounds.quantize(point.rpm) != point.rpm:
                 raise DomainError(f"{point.rpm} RPM no respeta pasos de {bounds.step_rpm}.")
@@ -150,13 +149,10 @@ class FanPolicy:
         self.curve.validate_for(bounds)
         if not bounds.minimum_rpm <= self.fixed_rpm <= bounds.maximum_rpm:
             raise DomainError(
-                f"La RPM fija debe estar entre {bounds.minimum_rpm} y "
-                f"{bounds.maximum_rpm}."
+                f"La RPM fija debe estar entre {bounds.minimum_rpm} y {bounds.maximum_rpm}."
             )
         if bounds.quantize(self.fixed_rpm) != self.fixed_rpm:
-            raise DomainError(
-                f"La RPM fija debe respetar pasos de {bounds.step_rpm} RPM."
-            )
+            raise DomainError(f"La RPM fija debe respetar pasos de {bounds.step_rpm} RPM.")
 
     def target_for(self, temperature_c: int, bounds: FanBounds) -> int | None:
         self.validate_for(bounds)
@@ -191,10 +187,7 @@ class FanController:
         raw_target = self._policy.target_for(hottest, self._bounds)
         if raw_target is None:
             return None
-        if (
-            self._policy.mode is FanMode.FIXED
-            or hottest >= EMERGENCY_FULL_SPEED_C
-        ):
+        if self._policy.mode is FanMode.FIXED or hottest >= EMERGENCY_FULL_SPEED_C:
             self._control_temperature_c = hottest
             self._held_temperature_c = hottest
             self._target_rpm = raw_target
@@ -227,7 +220,8 @@ class FanController:
             if desired_rpm > previous_rpm:
                 self._held_temperature_c = temperature_c
                 self._target_rpm = desired_rpm
-            return self._target_rpm
+                return desired_rpm
+            return previous_rpm
 
         if temperature_c > reference_temperature - DOWNWARD_HYSTERESIS_C:
             self._cooling_samples = 0
@@ -238,9 +232,7 @@ class FanController:
             return previous_rpm
 
         maximum_drop = self._bounds.step_rpm * MAX_DOWNWARD_STEP_COUNT
-        next_rpm = self._bounds.quantize(
-            max(desired_rpm, previous_rpm - maximum_drop)
-        )
+        next_rpm = self._bounds.quantize(max(desired_rpm, previous_rpm - maximum_drop))
         self._target_rpm = next_rpm
         self._cooling_samples = 0
         if next_rpm == desired_rpm:

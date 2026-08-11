@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import colorsys
 from collections.abc import Callable
 from typing import Any
 
@@ -14,13 +13,16 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Adw, Gdk, Gtk  # noqa: E402
 
 from legion_control.client import ControlPort  # noqa: E402
+from legion_control.i18n import translate  # noqa: E402
 from legion_control.rgb import (  # noqa: E402
     RGB_ZONE_COUNT,
     RgbColor,
     RgbConfiguration,
     default_rgb_configuration,
+    gradient_rgb_configuration,
     rgb_configuration_from_document,
     solid_rgb_configuration,
+    wave_rgb_configuration,
 )
 
 
@@ -40,10 +42,10 @@ class ZoneSwatch(Gtk.ToggleButton):
         super().__init__()
         self._zone_index = zone_index
         self._color = RgbColor(0, 0, 0)
-        self.set_tooltip_text(f"Editar zona {zone_index + 1}")
+        self.set_tooltip_text(translate("Editar zona {index}", index=zone_index + 1))
         self.update_property(
             [Gtk.AccessibleProperty.LABEL],
-            [f"Zona RGB {zone_index + 1}"],
+            [translate("Zona RGB {index}", index=zone_index + 1)],
         )
         self.add_css_class("zone-swatch")
         drawing = Gtk.DrawingArea()
@@ -169,6 +171,10 @@ class LightingPage(Adw.PreferencesPage):
         )
         scale.set_draw_value(False)
         scale.set_size_request(220, -1)
+        scale.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            ["Brillo del teclado en por ciento"],
+        )
         self._brightness_value = Gtk.Label(label="60 %")
         self._brightness_value.add_css_class("measurement")
         brightness_box = Gtk.Box(
@@ -186,6 +192,10 @@ class LightingPage(Adw.PreferencesPage):
         color_dialog = Gtk.ColorDialog()
         color_dialog.set_with_alpha(False)
         self._color_button = Gtk.ColorDialogButton(dialog=color_dialog)
+        self._color_button.update_property(
+            [Gtk.AccessibleProperty.LABEL],
+            ["Color de la zona seleccionada"],
+        )
         all_button = Gtk.Button(label="Aplicar a todas")
         all_button.connect("clicked", self._on_apply_color_to_all)
         color_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -197,9 +207,7 @@ class LightingPage(Adw.PreferencesPage):
 
         zones_group = Adw.PreferencesGroup()
         zones_group.set_title("Zonas")
-        zones_group.set_description(
-            "Selecciona una de las 24 zonas y cambia su color"
-        )
+        zones_group.set_description("Selecciona una de las 24 zonas y cambia su color")
         self._zones_group = zones_group
         zone_grid = Gtk.Grid(column_spacing=6, row_spacing=6)
         zone_grid.set_column_homogeneous(True)
@@ -214,7 +222,10 @@ class LightingPage(Adw.PreferencesPage):
         self.add(zones_group)
 
         presets = Adw.PreferencesGroup()
-        presets.set_title("Presets")
+        presets.set_title("Presets y efectos estáticos")
+        presets.set_description(
+            "Un solo frame verificado; no activa animaciones de firmware no comprobadas"
+        )
         self._presets_group = presets
         preset_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         preset_box.add_css_class("preset-box")
@@ -222,6 +233,8 @@ class LightingPage(Adw.PreferencesPage):
             ("Legion", self._preset_legion),
             ("Blanco", self._preset_white),
             ("Espectro", self._preset_spectrum),
+            ("Atardecer", self._preset_sunset),
+            ("Ola", self._preset_wave),
             ("Apagar", self._preset_off),
         ):
             button = Gtk.Button(label=label)
@@ -252,25 +265,21 @@ class LightingPage(Adw.PreferencesPage):
         document = status.get("rgb_configuration")
         if not self._editor_dirty and known and isinstance(document, dict):
             try:
-                self._load_configuration(
-                    rgb_configuration_from_document(document)
-                )
+                self._load_configuration(rgb_configuration_from_document(document))
             except ValueError:
                 known = False
         if not self._available:
-            self._status_pill.set_label("No disponible")
+            self._status_pill.set_label(translate("No disponible"))
             self._status_copy.set_label(
-                "No aparece 048d:c195 en la interfaz HID esperada"
+                translate("No aparece 048d:c195 en la interfaz HID esperada")
             )
         elif known:
-            self._status_pill.set_label("Aplicado")
-            self._status_copy.set_label(
-                "Configuración confirmada por el helper local"
-            )
+            self._status_pill.set_label(translate("Aplicado"))
+            self._status_copy.set_label(translate("Configuración confirmada por el helper local"))
         else:
-            self._status_pill.set_label("Detectado")
+            self._status_pill.set_label(translate("Detectado"))
             self._status_copy.set_label(
-                "Controlador listo · aplica un preset para sincronizar"
+                translate("Controlador listo · aplica un preset para sincronizar")
             )
         self._set_controls_sensitive(self._available)
         self._sync_apply_button()
@@ -343,35 +352,36 @@ class LightingPage(Adw.PreferencesPage):
             self._set_editor_dirty(True)
 
     def _on_brightness_changed(self, adjustment: Gtk.Adjustment) -> None:
-        self._brightness_value.set_label(
-            f"{adjustment.get_value():.0f} %"
-        )
+        self._brightness_value.set_label(f"{adjustment.get_value():.0f} %")
         if not self._refreshing:
             self._set_editor_dirty(True)
 
     def _preset_legion(self) -> None:
-        self._set_preset(
-            solid_rgb_configuration(RgbColor(229, 32, 47), 70)
-        )
+        self._set_preset(solid_rgb_configuration(RgbColor(229, 32, 47), 70))
 
     def _preset_white(self) -> None:
-        self._set_preset(
-            solid_rgb_configuration(RgbColor(235, 239, 245), 45)
-        )
+        self._set_preset(solid_rgb_configuration(RgbColor(235, 239, 245), 45))
 
     def _preset_spectrum(self) -> None:
-        zones = tuple(
-            RgbColor(
-                round(red * 255),
-                round(green * 255),
-                round(blue * 255),
-            )
-            for index in range(RGB_ZONE_COUNT)
-            for red, green, blue in (
-                colorsys.hsv_to_rgb(index / RGB_ZONE_COUNT, 0.92, 1.0),
+        self._set_preset(wave_rgb_configuration(70))
+
+    def _preset_sunset(self) -> None:
+        self._set_preset(
+            gradient_rgb_configuration(
+                RgbColor(247, 137, 55),
+                RgbColor(119, 46, 181),
+                65,
             )
         )
-        self._set_preset(RgbConfiguration(True, 70, zones))
+
+    def _preset_wave(self) -> None:
+        configuration = wave_rgb_configuration(70)
+        rotated = RgbConfiguration(
+            configuration.enabled,
+            configuration.brightness_percent,
+            configuration.zones[6:] + configuration.zones[:6],
+        )
+        self._set_preset(rotated)
 
     def _preset_off(self) -> None:
         configuration = self.current_configuration()
@@ -398,7 +408,7 @@ class LightingPage(Adw.PreferencesPage):
         self._apply_button.set_sensitive(False)
         self._run_mutation(
             lambda: self._client.set_rgb_configuration(configuration),
-            "Iluminación aplicada en las 24 zonas.",
+            translate("Iluminación aplicada en las 24 zonas."),
             self._finish_apply,
             self._apply_failed,
         )
@@ -420,9 +430,7 @@ class LightingPage(Adw.PreferencesPage):
         self._presets_group.set_sensitive(sensitive)
 
     def _sync_apply_button(self) -> None:
-        self._apply_button.set_sensitive(
-            self._available and self._editor_dirty
-        )
+        self._apply_button.set_sensitive(self._available and self._editor_dirty)
 
 
 def _rounded_rectangle(

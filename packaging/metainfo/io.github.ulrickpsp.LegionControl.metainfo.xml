@@ -26,6 +26,23 @@
     <binary>legion-control</binary>
   </provides>
   <releases>
+    <release version="0.6.0" date="2026-08-11">
+      <description>
+        <p>
+          Añade informe Doctor, archivo local de telemetría de siete días con
+          exportación CSV, automatización de escenas por fuente de energía,
+          avisos térmicos, icono de bandeja, órdenes de terminal, presets RGB
+          estáticos de degradado y onda, y cinco idiomas de interfaz.
+        </p>
+        <p>
+          Corrige la exportación CSV y el guardado y copiado del informe
+          Doctor, evita que el archivo de telemetría se borre al superar su
+          presupuesto, nombra todos los controles para tecnologías de apoyo,
+          adapta la cabecera a pantallas estrechas y cumple el contraste
+          mínimo en el esquema de color claro.
+        </p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-08-11">
       <description>
         <p>

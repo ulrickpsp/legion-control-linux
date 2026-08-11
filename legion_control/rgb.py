@@ -247,6 +247,19 @@ def wave_rgb_configuration(
     return RgbConfiguration(enabled, brightness_percent, zones)
 
 
+def alternating_rgb_configuration(
+    first: RgbColor,
+    second: RgbColor,
+    brightness_percent: int,
+    *,
+    enabled: bool = True,
+) -> RgbConfiguration:
+    """Alternate two colours across the zones, as one static frame."""
+
+    zones = tuple(first if index % 2 == 0 else second for index in range(RGB_ZONE_COUNT))
+    return RgbConfiguration(enabled, brightness_percent, zones)
+
+
 def default_rgb_configuration() -> RgbConfiguration:
     return solid_rgb_configuration(
         RgbColor(229, 72, 77),

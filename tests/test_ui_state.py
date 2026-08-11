@@ -154,7 +154,7 @@ class PageStateTests(unittest.TestCase):
 
         self.assertEqual(len(page._history_panel.history.samples), 2)
 
-    def test_refresh_preserves_unapplied_rgb_preset(self) -> None:
+    def test_refresh_preserves_a_preset_waiting_to_be_written(self) -> None:
         page = LightingPage(
             self.client,
             self.mutations,
@@ -167,9 +167,78 @@ class PageStateTests(unittest.TestCase):
         page.update_status(self.client.read_status())
 
         configuration = page.current_configuration()
-        self.assertEqual(configuration.brightness_percent, 45)
         self.assertEqual(configuration.zones[0].red, 235)
-        self.assertTrue(page._apply_button.get_sensitive())
+        self.assertTrue(page._pending_write)
+
+    def test_a_preset_keeps_the_brightness_the_user_chose(self) -> None:
+        page = LightingPage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            lambda _message: None,
+        )
+        page.update_status(self.client.read_status())
+        page._brightness.set_value(23)
+
+        page._preset_white()
+
+        # "Blanco" ships 45 %, but brightness belongs to the user, not the preset.
+        self.assertEqual(page.current_configuration().brightness_percent, 23)
+        self.assertEqual(page.current_configuration().zones[0].red, 235)
+
+    def test_edits_are_written_without_an_apply_button(self) -> None:
+        page = LightingPage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            lambda _message: None,
+        )
+        page.update_status(self.client.read_status())
+        page._preset_legion()
+
+        self.assertTrue(page._pending_write)
+        page._flush_write()
+        operation, _message, _success, _failure = self.mutations.calls[-1]
+        operation()
+
+        self.assertFalse(page._pending_write)
+        self.assertEqual(self.client.rgb_configuration.zones[0].red, 229)
+
+    def test_a_failed_write_keeps_the_colours_on_screen(self) -> None:
+        page = LightingPage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            lambda _message: None,
+        )
+        page.update_status(self.client.read_status())
+        page._preset_white()
+        page._flush_write()
+        _operation, _message, _success, failure = self.mutations.calls[-1]
+
+        self.assertIsNotNone(failure)
+        failure()
+        page.update_status(self.client.read_status())
+
+        # The keyboard still holds the old colours; the draft must survive so
+        # the user can retry instead of watching their edit disappear.
+        self.assertEqual(page.current_configuration().zones[0].red, 235)
+
+    def test_an_edit_made_during_a_write_is_not_lost(self) -> None:
+        page = LightingPage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            lambda _message: None,
+        )
+        page.update_status(self.client.read_status())
+        page._preset_legion()
+        page._flush_write()
+
+        page._preset_white()
+        page._flush_write()
+
+        self.assertTrue(page._pending_write)
 
     def test_quick_scene_applies_rgb_and_thermal_profile(self) -> None:
         with TemporaryDirectory() as directory:

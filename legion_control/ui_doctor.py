@@ -44,6 +44,7 @@ class DoctorPage(Adw.PreferencesPage):
         results = Adw.PreferencesGroup()
         results.set_title("Informe")
         for key, title in (
+            ("version", "Versión"),
             ("identity", "Equipo"),
             ("kernel", "Kernel"),
             ("fan_control", "Ventilación"),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from legion_control import __version__
 from legion_control.doctor import DoctorSeverity, build_doctor_report
 
 
@@ -50,3 +51,16 @@ def _status() -> dict[str, object]:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoctorVersionTests(unittest.TestCase):
+    """A support report has to say which build produced it."""
+
+    def test_report_states_the_installed_version(self) -> None:
+        report = build_doctor_report({}, kernel_release="7.0.0-test")
+
+        version = next(item for item in report.findings if item.key == "version")
+
+        self.assertIn(__version__, version.value)
+        self.assertIn(__version__, report.to_text())
+        self.assertIn(__version__, report.to_json())

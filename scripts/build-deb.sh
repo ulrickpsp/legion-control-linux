@@ -10,7 +10,7 @@ export SOURCE_DATE_EPOCH
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUTPUT_DIR=${1:-"$PROJECT_DIR/../outputs"}
 BUILD_ROOT="$PROJECT_DIR/build"
-PACKAGE_NAME="legion-control_0.6.0_all.deb"
+PACKAGE_NAME="legion-control_0.7.0_all.deb"
 
 mkdir -p "$BUILD_ROOT" "$OUTPUT_DIR"
 STAGING_DIR=$(mktemp -d "$BUILD_ROOT/staging.XXXXXX")

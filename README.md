@@ -5,7 +5,7 @@ Native GTK4/libadwaita control center for the Lenovo Legion Pro 5 16IAX10H
 
 > [!WARNING]
 > **Status: alpha.** The physical validation behind this project was performed
-> on one unit, with 0.5.0. Version 0.6.0 has not been re-validated against
+> on one unit, with 0.5.0. Version 0.7.0 has not been re-validated against
 > hardware; it was verified with the offline gate and simulated telemetry only.
 > This is not a compatibility promise for another laptop, although truly
 > equivalent units —same `83LU` DMI, BIOS, ITE controller, and WMI attributes—
@@ -89,7 +89,7 @@ APT so dependencies and package lifecycle scripts are applied:
 
 ```bash
 sha256sum --check SHA256SUMS
-sudo apt install ./legion-control_0.6.0_all.deb
+sudo apt install ./legion-control_0.7.0_all.deb
 ```
 
 Launch **Legion Control** from the application grid.
@@ -179,7 +179,7 @@ gates. A successful unit suite is not evidence for a new laptop model.
 
 ## Scope and roadmap
 
-Version 0.6.0 deliberately excludes overclocking, GPU/MUX switching, animated
+Version 0.7.0 deliberately excludes overclocking, GPU/MUX switching, animated
 RGB firmware effects, firmware flashing, and third-party kernel modules. Static
 24-zone gradients and waves use only the verified static report sequence; they
 do not claim or send an animation command. New hardware support requires its

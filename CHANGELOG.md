@@ -4,6 +4,38 @@ All notable changes to Legion Control are documented here. The project follows
 [Semantic Versioning](https://semver.org/) while the public API and hardware
 support surface mature.
 
+## 0.7.0 — 2026-08-12
+
+### Added
+
+- Six static RGB presets built from the verified transport: Hielo, Bosque,
+  Neón, Brasa, Nocturno and Ajedrez.
+- A restart button on the Language page, since the choice only applies on the
+  next launch.
+- The installed version in the Doctor report, on the page and in both terminal
+  output formats.
+- A button to restore the shipped fan curve.
+
+### Changed
+
+- Lighting applies on its own shortly after each change; the Apply button is
+  gone. Writes are coalesced and serialized because each one crosses PolicyKit
+  into the privileged helper.
+- A preset no longer overwrites the chosen brightness.
+- The thermal profile list no longer offers "custom"; it is a consequence of
+  applying a curve or a fixed RPM and is now reported as state.
+- Power limits are described by effect instead of by acronym, and the Apply
+  button sits below the editor it confirms.
+- Every preference group states whether it applies instantly or waits for
+  Apply.
+- Scene rows follow their automation switch.
+
+### Fixed
+
+- A failed lighting write no longer loses the colours on screen to the next
+  status refresh.
+- Preset buttons no longer fall below their minimum width; the row wraps.
+
 ## 0.6.0 — 2026-08-11
 
 ### Added

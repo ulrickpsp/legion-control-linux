@@ -26,6 +26,23 @@
     <binary>legion-control</binary>
   </provides>
   <releases>
+    <release version="0.7.0" date="2026-08-12">
+      <description>
+        <p>
+          Añade seis presets RGB estáticos, aplica la iluminación sola poco
+          después de cada cambio en lugar de esperar a un botón, conserva el
+          brillo elegido al cambiar de preset, ofrece reiniciar tras cambiar
+          el idioma y muestra la versión instalada en el informe Doctor.
+        </p>
+        <p>
+          Simplifica la configuración: retira «Personalizado» del desplegable
+          de perfiles porque lo activa la curva o la RPM fija, coloca el botón
+          Aplicar bajo el editor que confirma, describe los límites de potencia
+          por su efecto, añade restablecer curva y declara en cada grupo si el
+          cambio es inmediato o requiere Aplicar.
+        </p>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-08-11">
       <description>
         <p>

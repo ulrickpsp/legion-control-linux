@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.ulrickpsp.LegionControl</id>
   <name>Legion Control</name>
-  <summary>Controles alpha para el Lenovo Legion 83LU en Linux</summary>
+  <summary>Controles beta para el Lenovo Legion 83LU en Linux</summary>
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
   <developer id="io.github.ulrickpsp">
@@ -10,7 +10,7 @@
   </developer>
   <description>
     <p>
-      Versión alpha validada en una sola unidad Lenovo Legion Pro 5 16IAX10H
+      Versión beta validada en una sola unidad Lenovo Legion Pro 5 16IAX10H
       (DMI 83LU). Consulta temperaturas y ventiladores, cambia perfiles y
       potencia, aplica curvas seguras y controla el teclado RGB ITE de 24
       zonas. Incluye Doctor solo lectura, historial local exportable y
@@ -39,6 +39,19 @@
           comportamiento tras un apagado completo, junto con el motivo de no
           incluir animación: no se pudo determinar si la orden de color llega a
           memoria no volátil.
+        </p>
+        <p>
+          Doctor pasa a diagnosticar la instalación además de las lecturas:
+          comprueba el helper con privilegios y su acción PolicyKit, los módulos
+          WMI de Lenovo, la BIOS frente a la validada, el estado real del
+          servicio de curva, y si otro componente escribe platform_profile o
+          maneja el mismo controlador ITE. Cada hallazgo con problema indica
+          cómo resolverlo.
+        </p>
+        <p>
+          Añade avisos de versión opcionales, desactivados por defecto. Al
+          activarlos consultan una vez al día si existe una publicación más
+          reciente. No descargan, no instalan y no envían ningún identificador.
         </p>
       </description>
     </release>

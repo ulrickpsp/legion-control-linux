@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from typing import Protocol, TextIO
 
 from legion_control.client import LocalControlClient
-from legion_control.doctor import build_doctor_report
+from legion_control.doctor import SystemProbe, build_doctor_report, probe_system
 from legion_control.i18n import configure_startup_language, translate
 from legion_control.linux import SysfsHardware
 from legion_control.scenes import (
@@ -36,6 +36,7 @@ def main(
     *,
     client: CommandClient | None = None,
     output: TextIO | None = None,
+    probe: SystemProbe | None = None,
 ) -> int:
     configure_startup_language()
     parser = _parser()
@@ -46,7 +47,12 @@ def main(
         _write_json(out, control.read_status())
         return 0
     if parsed.command == "doctor":
-        report = build_doctor_report(control.read_status())
+        # The environment checks are the reason to run this from a terminal,
+        # so the command pays for them where the status poll would not.
+        report = build_doctor_report(
+            control.read_status(),
+            probe=probe if probe is not None else probe_system(),
+        )
         out.write(report.to_json() if parsed.json else report.to_text())
         return 0
     if parsed.command == "restore-firmware":

@@ -23,7 +23,7 @@ class PackagingSafetyTests(unittest.TestCase):
         project = tomllib.loads(_read("pyproject.toml"))
         self.assertEqual(project["project"]["urls"]["Homepage"], project_url)
         self.assertIn(
-            "Development Status :: 3 - Alpha",
+            "Development Status :: 4 - Beta",
             project["project"]["classifiers"],
         )
 
@@ -35,10 +35,10 @@ class PackagingSafetyTests(unittest.TestCase):
         self.assertIn(f'APPLICATION_ID: Final = "{app_id}"', _read("legion_control/ui.py"))
         self.assertIn(f"Homepage: {project_url}", _read("packaging/debian/control"))
 
-    def test_public_alpha_scope_and_disclaimer_are_explicit(self) -> None:
+    def test_public_beta_scope_and_disclaimer_are_explicit(self) -> None:
         readme = _read("README.md")
         for fragment in (
-            "**Status: alpha.**",
+            "**Status: beta.**",
             "one unit",
             "Use it at your own risk",
             "MIT License",
@@ -48,7 +48,7 @@ class PackagingSafetyTests(unittest.TestCase):
                 self.assertIn(fragment, readme)
 
         metainfo = _read("packaging/metainfo/io.github.ulrickpsp.LegionControl.metainfo.xml")
-        self.assertIn("Controles alpha para el Lenovo Legion 83LU", metainfo)
+        self.assertIn("Controles beta para el Lenovo Legion 83LU", metainfo)
         self.assertIn("una sola unidad", metainfo)
 
     def test_privileged_helper_requires_active_admin_authentication(self) -> None:
@@ -102,6 +102,28 @@ class PackagingSafetyTests(unittest.TestCase):
         self.assertIn('[ -f "$RESTART_MARKER" ]', postinst)
         self.assertIn("systemctl enable --now legion-control-fand.service", postinst)
 
+    def test_an_upgrade_cannot_keep_running_the_previous_release(self) -> None:
+        """Reproducible builds pin source mtimes, so cached bytecode never expires.
+
+        Python invalidates a .pyc by the source's (mtime, size). Both survive an
+        upgrade for any file whose length is unchanged, so a stale cache would
+        keep executing the previous version. Two guards: the entry points never
+        write bytecode, and installation clears what earlier versions wrote.
+        """
+
+        cache = "/usr/lib/legion-control/legion_control/__pycache__"
+        for entry_point in (
+            "packaging/bin/legion-control",
+            "packaging/libexec/legion-control-helper",
+            "packaging/libexec/legion-control-fand",
+        ):
+            with self.subTest(entry_point=entry_point):
+                self.assertTrue(_read(entry_point).startswith("#!/usr/bin/python3 -IB\n"))
+        # Bounded to .pyc files in one directory: no recursive delete anywhere.
+        for script in ("packaging/debian/postinst", "packaging/debian/postrm"):
+            with self.subTest(script=script):
+                self.assertIn(f"rm -f {cache}/*.pyc", _read(script))
+
     def test_purge_removes_only_known_state_files(self) -> None:
         postrm = _read("packaging/debian/postrm")
         self.assertIn("/var/lib/legion-control/fan-config.json", postrm)
@@ -118,7 +140,9 @@ class PackagingSafetyTests(unittest.TestCase):
         for relative_path in launchers:
             with self.subTest(launcher=relative_path):
                 launcher = _read(relative_path)
-                self.assertTrue(launcher.startswith("#!/usr/bin/python3 -I\n"))
+                # -I isolates the interpreter; -B keeps it from caching bytecode
+                # that a later upgrade could not invalidate.
+                self.assertTrue(launcher.startswith("#!/usr/bin/python3 -IB\n"))
                 self.assertIn('sys.path.insert(0, "/usr/lib/legion-control")', launcher)
 
     def test_release_version_is_consistent_across_package_metadata(self) -> None:

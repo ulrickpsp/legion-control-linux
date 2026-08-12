@@ -5,6 +5,14 @@ RESTART_MARKER=/run/legion-control-fand.restart-after-upgrade
 
 install -d -m 0755 /var/lib/legion-control
 
+# Bytecode written by an earlier version must not survive this upgrade. The
+# package pins every source mtime so builds stay reproducible, so a cached
+# .pyc keeps matching (mtime, size) whenever a file's length is unchanged, and
+# Python would go on executing the previous release's code. The entry points
+# no longer write bytecode; this clears whatever they left behind.
+rm -f /usr/lib/legion-control/legion_control/__pycache__/*.pyc
+rmdir /usr/lib/legion-control/legion_control/__pycache__ 2>/dev/null || true
+
 if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
 fi

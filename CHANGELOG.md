@@ -14,6 +14,21 @@ support surface mature.
 - Measurements of the controller's write cost and its behaviour across power
   cycles, in `docs/RGB-PROTOCOL.md`, together with the reasoning for not
   shipping animation.
+- Doctor now diagnoses the installation, not only the readings: whether the
+  privileged helper and its PolicyKit action are present, whether the Lenovo WMI
+  modules are loaded, how the BIOS compares with the validated one, the real
+  systemd state of the fan service, and whether another component writes
+  `platform_profile` or drives the same ITE keyboard controller.
+- Every Doctor finding that is not OK carries the step that resolves it, shown
+  under the row and included in both export formats.
+- Doctor rows carry their own severity icon and colour instead of only a global
+  summary pill, plus a button to run the environment checks again and one to
+  copy the report as JSON.
+- Opt-in release notices, off by default. Once enabled, the application asks the
+  project's public releases listing once a day whether a newer version exists
+  and reports it on the Doctor page and in the report. It sends no identifier
+  and downloads, installs and executes nothing; installation stays with the
+  package manager.
 
 ### Changed
 
@@ -24,6 +39,27 @@ support surface mature.
   recover after `Fn+Space`.
 - The report writer spaces consecutive reports by the validated delay instead
   of also waiting after the last one.
+- The Doctor JSON report is version 2: findings gained a `remedy` field and the
+  environment checks appear as additional findings.
+- `legion-control doctor` runs the environment checks; the application reads
+  them once per session and on request rather than on every status poll.
+- The documented "no network service" property is now stated precisely: no DKMS
+  module, firmware flash, account or telemetry, and one optional release check
+  that is disabled until the user enables it.
+
+### Fixed
+
+- An upgrade could keep running the previous release. The package pins every
+  source mtime so builds stay reproducible, and Python invalidates cached
+  bytecode by the source's mtime and size, so a `.pyc` from the installed
+  version stayed valid for any file whose length was unchanged. Upgrading
+  0.6.0 to 0.8.0 on the development laptop went on reporting 0.6.0 from stale
+  bytecode. The entry points no longer write bytecode, and installation and
+  removal clear what earlier versions left behind.
+- The interface localization pass no longer de-duplicates widgets by `id()`.
+  A widget tree is acyclic, so the set bought nothing, and PyGObject hands a
+  freed wrapper's address to the next one, so an unrelated widget could inherit
+  an address already recorded as seen and keep its source-language text.
 
 ### Removed
 

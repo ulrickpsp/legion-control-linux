@@ -14,9 +14,14 @@ risks are local integration points and hardware state, not network scale.
 | fan loop | 2 s interval | every exit attempts firmware restore; systemd repeats it on stop |
 | RGB feature reports | 10 ms pacing | one locked FD; partial/failing sequence closes FD and invalidates saved state |
 
-There are no outbound network calls, retry loops, remote dependencies,
-connection pools, queues, or databases. Circuit breakers and distributed
-tracing would add complexity without protecting a real integration point.
+The only outbound network call is the opt-in release notice, disabled by
+default: one HTTPS request per day, with an 8 s timeout and a bounded response,
+whose every failure mode is the single answer "unknown". It is never retried,
+holds no connection, and no hardware, privilege, or safety path depends on it.
+
+There are otherwise no retry loops, remote dependencies, connection pools,
+queues, or databases. Circuit breakers and distributed tracing would add
+complexity without protecting a real integration point.
 
 ## Safe failure states
 

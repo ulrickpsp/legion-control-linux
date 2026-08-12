@@ -93,8 +93,8 @@ Important limitations:
 - The controller provides no trustworthy semantic readback for the complete
   static configuration. An accepted ioctl proves transport success, not that
   every LED visibly changed.
-- Static colors, off, gradients, and waves are implemented. Animated firmware
-  effects are intentionally outside the current scope.
+- Static colors, off, gradients, waves, and locally rendered animations are
+  implemented. Firmware animation commands are intentionally outside scope.
 - A disconnect or controller stall remains possible, but a replaced hidraw node
   is rejected by revalidating VID/PID and descriptor from the opened FD.
 
@@ -103,6 +103,25 @@ See [`RGB-PROTOCOL.md`](RGB-PROTOCOL.md) for the exact observed framing.
 Gradient and wave presets are static 24-zone frames encoded with that same
 verified profile `1` sequence. They do not use animation/effect commands and
 must not be represented as firmware animation support.
+
+## Static patterns
+
+Aurora, fire, comet, crest and colour bands are single 24-zone frames sampled
+from a continuous field, written once through the same verified sequence as any
+other preset. They cost exactly one write, like a solid colour does.
+
+Animating them was built and removed. Whether the colour command reaches
+non-volatile controller storage could not be determined on the validated unit,
+and repeating that write many times a second against an unknown endurance was
+not a risk worth taking for motion. The measurements and the two experiments are
+in [`RGB-PROTOCOL.md`](RGB-PROTOCOL.md).
+
+The application also skips a write whose result would be identical to the one it
+last sent, so a repeated preset or a slider returned to its starting value costs
+the controller nothing. It deliberately does not skip on the strength of the
+saved configuration file: that records what the helper last accepted, not what
+the keyboard shows, so re-applying a preset stays available after `Fn+Space`
+changes the visible profile.
 
 ## Known limits of the safety model
 

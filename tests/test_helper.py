@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from legion_control.config import ConfigStore, default_policy
@@ -63,14 +64,20 @@ class FakeHardware:
     def restore_firmware_control(self) -> None:
         self.restore_count += 1
 
+    def status(self) -> SimpleNamespace:
+        """Only the fields the controller adds on top are under test here."""
+
+        return SimpleNamespace(to_dict=lambda: {"profile": self.profile})
+
 
 class FakeRgbHardware:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
+        self.available = True
         self.applied: RgbConfiguration | None = None
 
     def is_available(self) -> bool:
-        return True
+        return self.available
 
     def apply(self, configuration: RgbConfiguration) -> None:
         if self.fail:

@@ -26,6 +26,22 @@
     <binary>legion-control</binary>
   </provides>
   <releases>
+    <release version="0.8.0" date="2026-08-12">
+      <description>
+        <p>
+          Añade cinco presets estáticos más elaborados que un degradado plano:
+          Bandas, Aurora, Fuego, Cometa y Cresta. Cada uno es un solo frame de
+          24 zonas, escrito una vez con la misma secuencia ya verificada.
+        </p>
+        <p>
+          Evita reescribir el teclado cuando el resultado sería idéntico al ya
+          enviado. Documenta el coste de escritura del controlador y su
+          comportamiento tras un apagado completo, junto con el motivo de no
+          incluir animación: no se pudo determinar si la orden de color llega a
+          memoria no volátil.
+        </p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-08-12">
       <description>
         <p>

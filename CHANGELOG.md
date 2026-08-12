@@ -4,6 +4,38 @@ All notable changes to Legion Control are documented here. The project follows
 [Semantic Versioning](https://semver.org/) while the public API and hardware
 support surface mature.
 
+## 0.8.0 — 2026-08-12
+
+### Added
+
+- Five static presets richer than a flat gradient: Bandas, Aurora, Fuego,
+  Cometa and Cresta. Each is one 24-zone frame sampled from a continuous field
+  and written once, exactly like any other preset.
+- Measurements of the controller's write cost and its behaviour across power
+  cycles, in `docs/RGB-PROTOCOL.md`, together with the reasoning for not
+  shipping animation.
+
+### Changed
+
+- A lighting write that would produce the result already sent is skipped, so a
+  repeated preset or a slider returned to its starting value costs the
+  controller nothing. It is deliberately not skipped on the strength of the
+  saved configuration file, so re-applying a preset still works as a way to
+  recover after `Fn+Space`.
+- The report writer spaces consecutive reports by the validated delay instead
+  of also waiting after the last one.
+
+### Removed
+
+- Animated keyboard effects, built during this release and then withdrawn.
+  Whether the colour command reaches non-volatile controller storage could not
+  be determined: it survives a full power cycle, but the controller's power rail
+  cannot be cut without disassembly, and latency does not distinguish a storage
+  write from a refresh, since the off report carries no colour and costs the
+  same as a coloured one. Repeating that write many times a second against an
+  unknown endurance was not a risk worth taking for motion. The patterns remain
+  as still frames.
+
 ## 0.7.0 — 2026-08-12
 
 ### Added

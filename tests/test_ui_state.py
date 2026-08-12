@@ -168,7 +168,7 @@ class PageStateTests(unittest.TestCase):
 
         configuration = page.current_configuration()
         self.assertEqual(configuration.zones[0].red, 235)
-        self.assertTrue(page._pending_write)
+        self.assertTrue(page._static_write.pending)
 
     def test_a_preset_keeps_the_brightness_the_user_chose(self) -> None:
         page = LightingPage(
@@ -196,12 +196,12 @@ class PageStateTests(unittest.TestCase):
         page.update_status(self.client.read_status())
         page._preset_legion()
 
-        self.assertTrue(page._pending_write)
-        page._flush_write()
+        self.assertTrue(page._static_write.pending)
+        page._static_write._fire()
         operation, _message, _success, _failure = self.mutations.calls[-1]
         operation()
 
-        self.assertFalse(page._pending_write)
+        self.assertFalse(page._static_write.pending)
         self.assertEqual(self.client.rgb_configuration.zones[0].red, 229)
 
     def test_a_failed_write_keeps_the_colours_on_screen(self) -> None:
@@ -213,7 +213,7 @@ class PageStateTests(unittest.TestCase):
         )
         page.update_status(self.client.read_status())
         page._preset_white()
-        page._flush_write()
+        page._static_write._fire()
         _operation, _message, _success, failure = self.mutations.calls[-1]
 
         self.assertIsNotNone(failure)
@@ -233,12 +233,114 @@ class PageStateTests(unittest.TestCase):
         )
         page.update_status(self.client.read_status())
         page._preset_legion()
-        page._flush_write()
+        page._static_write._fire()
 
         page._preset_white()
-        page._flush_write()
+        page._static_write._fire()
 
-        self.assertTrue(page._pending_write)
+        self.assertTrue(page._static_write.pending)
+
+    def _lighting_page(self) -> LightingPage:
+        page = LightingPage(
+            self.client,
+            self.mutations,
+            lambda: None,
+            lambda _message: None,
+        )
+        page.update_status(self.client.read_status())
+        return page
+
+    def _settle(self) -> None:
+        """Run the queued privileged call and its success callback, as the app does."""
+
+        operation, _message, success, _failure = self.mutations.calls[-1]
+        operation()
+        if success is not None:
+            success()
+
+    def test_every_pattern_preset_reaches_the_keyboard(self) -> None:
+        page = self._lighting_page()
+
+        for preset in (
+            page._preset_bands,
+            page._preset_aurora,
+            page._preset_fire,
+            page._preset_comet,
+            page._preset_crest,
+        ):
+            with self.subTest(preset=preset.__name__):
+                preset()
+                drafted = page.current_configuration()
+                page._static_write._fire()
+                self._settle()
+
+                self.assertEqual(self.client.rgb_configuration.zones, drafted.zones)
+                self.assertGreater(len(set(drafted.zones)), 2)
+
+    def test_a_pattern_preset_keeps_the_brightness_the_user_chose(self) -> None:
+        page = self._lighting_page()
+        page._brightness.set_value(21)
+
+        page._preset_aurora()
+
+        self.assertEqual(page.current_configuration().brightness_percent, 21)
+
+    def test_applying_the_same_preset_twice_writes_once(self) -> None:
+        """Every write is a controller write; repeating one buys nothing."""
+
+        page = self._lighting_page()
+        page._preset_fire()
+        page._static_write._fire()
+        self._settle()
+        written = len(self.mutations.calls)
+
+        page._preset_fire()
+        page._static_write._fire()
+
+        self.assertEqual(len(self.mutations.calls), written)
+
+    def test_a_slider_returned_to_its_starting_value_writes_nothing(self) -> None:
+        page = self._lighting_page()
+        page._preset_fire()
+        page._static_write._fire()
+        self._settle()
+        written = len(self.mutations.calls)
+        start = page.current_configuration().brightness_percent
+
+        page._brightness.set_value(start + 15)
+        page._brightness.set_value(start)
+        page._static_write._fire()
+
+        self.assertEqual(len(self.mutations.calls), written)
+
+    def test_a_preset_matching_the_saved_state_is_still_written(self) -> None:
+        """The saved file records what the helper accepted, not what the keyboard
+        shows, so re-applying has to stay available as a way to recover."""
+
+        page = self._lighting_page()
+        saved = page.current_configuration()
+        self.assertEqual(saved.zones, self.client.rgb_configuration.zones)
+
+        page._preset_legion()
+        page._static_write._fire()
+
+        self.assertEqual(len(self.mutations.calls), 1)
+
+    def test_a_failed_write_is_retried_by_the_next_edit(self) -> None:
+        """A rejected write never reached the keyboard, so it is not 'written'."""
+
+        page = self._lighting_page()
+        page._preset_fire()
+        page._static_write._fire()
+        _operation, _message, _success, failure = self.mutations.calls[-1]
+        assert failure is not None
+        failure()
+        written = len(self.mutations.calls)
+
+        page._preset_fire()
+        page._static_write._fire()
+
+        self.assertEqual(len(self.mutations.calls), written + 1)
 
     def test_quick_scene_applies_rgb_and_thermal_profile(self) -> None:
         with TemporaryDirectory() as directory:

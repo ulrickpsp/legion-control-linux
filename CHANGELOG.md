@@ -11,7 +11,10 @@ support surface mature.
 - Six animated keyboard effects: breathing, rainbow, wave, comet, fire and
   aurora, with a speed control and a base colour for the three that use one.
   Every frame is the physically verified static report sequence; no firmware
-  animation, effect, speed or direction command is claimed or sent.
+  animation, effect, speed or direction command is claimed or sent. Whether
+  repeated colour writes wear the controller is unresolved by the latency
+  measured on the validated unit, so effects are opt-in and documented as the
+  least-proven part of the project.
 - `legion-control-rgbd`, a root service that holds the controller open and
   paints frames, because authorizing each frame through PolicyKit would spawn a
   privileged process 20 times a second. It runs with a closed device policy

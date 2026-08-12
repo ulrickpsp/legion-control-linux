@@ -35,9 +35,12 @@ from legion_control.rgb import (
 from legion_control.system_contract import RGB_CONFIG_PATH, RGB_EFFECT_CONFIG_PATH
 
 
-# 20 fps reads as motion rather than stepping, and stays far below the rate the
-# controller sustains. See docs/RGB-PROTOCOL.md for the measured latency.
-FRAME_INTERVAL_SECONDS: Final = 0.05
+# Measured on the 83LU: a 24-group colour report takes about 56 ms, 67 ms at the
+# 95th percentile, so the controller tops out near 17 frames per second. Asking
+# for more only makes the loop run flat out and miss every deadline. 80 ms keeps
+# headroom above the slowest measured frame and still reads as motion, since one
+# cycle of these effects lasts seconds. See docs/RGB-PROTOCOL.md.
+FRAME_INTERVAL_SECONDS: Final = 0.08
 # How often the daemon notices that the UI rewrote the effect file.
 RELOAD_INTERVAL_SECONDS: Final = 1.0
 # One reopen covers a USB re-enumeration after resume. Beyond that the daemon

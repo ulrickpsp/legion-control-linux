@@ -129,10 +129,16 @@ The animation never starts on its own. It runs only after an effect is chosen,
 and any static change — a preset, a zone colour, turning lighting off — stops
 it first, because two writers on one controller would fight over the keyboard.
 
-Whether the colour command reaches non-volatile controller storage is not
-established by this project's evidence. See the controller-wear section in
-[`RGB-PROTOCOL.md`](RGB-PROTOCOL.md) for how that is assessed and what remains
-unknown.
+Whether the colour command reaches non-volatile controller storage is **not
+established**. Latency was measured on the validated unit and does not settle
+it: the cost profile fits both a per-group storage write and a volatile push of
+24 LED values over an internal bus. A frame therefore carries an unquantified
+wear risk, and a continuous animation multiplies it by the number of frames.
+
+Treat animated effects as the least-proven part of this project. They are
+opt-in, never start on their own, and any static change stops them. See the
+controller-wear section in [`RGB-PROTOCOL.md`](RGB-PROTOCOL.md) for the
+measurements and for the power-loss test that would resolve the question.
 
 ## Known limits of the safety model
 

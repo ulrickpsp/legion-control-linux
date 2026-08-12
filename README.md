@@ -35,7 +35,9 @@ DKMS module, firmware flash, account, telemetry, or network service.
   ITE `048d:c195`.
 - Six animated keyboard effects — breathing, rainbow, wave, comet, fire and
   aurora — rendered locally as successive verified static frames by a hardened
-  root service. No firmware animation command is sent.
+  root service. No firmware animation command is sent. Whether repeated colour
+  writes wear the controller is unresolved, so effects are opt-in; see
+  [`docs/RGB-PROTOCOL.md`](docs/RGB-PROTOCOL.md).
 - Three local quick scenes: Silence, Work, and Game.
 - Opt-in AC/battery scene automation while the application is open.
 - Battery conservation, Fn Lock, and camera power when exposed by the kernel.

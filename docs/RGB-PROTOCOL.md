@@ -139,7 +139,7 @@ second. The service:
   descriptor checks on that descriptor;
 - sends `C8` and `CE` once, when the session opens, since profile selection and
   brightness do not change between frames;
-- sends only the `CB` colour report per frame, at 20 frames per second;
+- sends only the `CB` colour report per frame, at 12.5 frames per second;
 - skips a frame whose 24 colours are identical to the previous one;
 - reopens the controller at most once, to survive a USB re-enumeration after
   resume, and then fails rather than retrying indefinitely;
@@ -153,20 +153,66 @@ stops the effect service before applying a static configuration, and
 `systemctl disable --now` returns only after the service's restore step has
 finished, which orders the two writers.
 
+### Measured cost
+
+Measured on the validated unit, as the median of twenty `HIDIOCSFEATURE` calls
+on one open descriptor:
+
+| Report | Median | Notes |
+|---|---|---|
+| `C8` select profile | 5.97 ms | |
+| `CE` set brightness | 5.90 ms | |
+| `CB` one colour group | 42.02 ms | fastest observed 8.73 ms |
+| `CB` twenty-four groups | 56.40 ms | |
+
+A sustained burst of 200 twenty-four-group frames, sent as fast as the
+controller accepted them, held steady at 56.51 ms median over its first half
+against 56.52 ms over its second, and 67.27 ms at the 95th percentile. Nothing
+degraded within that burst, but every frame missed a 20 fps deadline: the
+controller tops out near **17 frames per second** when saturated.
+
+Those figures describe back-pressure, not the intrinsic cost. Running the
+service paced at 12.5 frames per second on the same unit, the median frame fell
+to 16–23 ms, and every effect held its target:
+
+| Effect | Frames/s | Median frame | CPU |
+|---|---|---|---|
+| breathing | 10.7 | 8.8 ms | 0.31 % |
+| rainbow | 12.1 | 22.6 ms | 0.35 % |
+| wave | 12.2 | 15.8 ms | 0.37 % |
+| comet | 12.3 | 19.2 ms | 0.37 % |
+| fire | 12.1 | 22.7 ms | 0.36 % |
+| aurora | 12.1 | 22.6 ms | 0.36 % |
+
+A frame whose 24 zones share one colour is cheapest, because the cost tracks
+the number of distinct colour groups rather than the constant 960-byte report
+size. Breathing falls below its target for a different reason: consecutive
+frames round to the same 24 colours and are skipped.
+
+The service therefore paces itself at 12.5 frames per second. Asking for more
+only saturates the controller, triples the per-frame cost, and writes more
+often.
+
 ### Controller wear
 
 Command `CB` is described in this document as saving zone groups into profile
-`1`. Whether that write reaches non-volatile storage is not established by the
-evidence here, and it matters: a page-programming write repeated 20 times a
-second would be a durability problem rather than a performance one.
+`1`. Whether that write reaches non-volatile storage **is not established**,
+and it matters: a page-programming write repeated many times a second would be
+a durability problem rather than a performance one.
 
-The proxy this project uses is write latency measured on the real controller.
-Programming a page on this class of microcontroller costs milliseconds and
-grows with payload size, while a volatile register write does not. `CB` is
-therefore compared against `C8` and `CE`, a one-group `CB` against a
-twenty-four-group `CB`, and a sustained burst against its own first half.
+The measurement above does not settle it. `CB` costing seven to ten times `C8`
+or `CE`, and growing with the number of groups, is consistent with programming
+storage per group. It is equally consistent with pushing 24 LED values over an
+internal bus, which is volatile. The two hypotheses predict the same latency
+profile, so this evidence cannot distinguish them.
 
-Animation is opt-in and never starts on its own.
+The test that would distinguish them is persistence across a full power loss:
+apply a distinctive static frame, shut down, disconnect power, and observe
+whether the controller still shows it. That has not been performed.
+
+Until it is, animation is treated as carrying an unquantified wear risk. It is
+opt-in, never starts on its own, and stops whenever any static change is
+applied.
 
 ## Concurrency and persistence
 

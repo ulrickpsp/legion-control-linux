@@ -44,12 +44,8 @@ install -m 0755 "$PROJECT_DIR/packaging/libexec/legion-control-helper" \
     "$STAGING_DIR/usr/libexec/legion-control-helper"
 install -m 0755 "$PROJECT_DIR/packaging/libexec/legion-control-fand" \
     "$STAGING_DIR/usr/libexec/legion-control-fand"
-install -m 0755 "$PROJECT_DIR/packaging/libexec/legion-control-rgbd" \
-    "$STAGING_DIR/usr/libexec/legion-control-rgbd"
 install -m 0644 "$PROJECT_DIR/packaging/systemd/legion-control-fand.service" \
     "$STAGING_DIR/usr/lib/systemd/system/legion-control-fand.service"
-install -m 0644 "$PROJECT_DIR/packaging/systemd/legion-control-rgbd.service" \
-    "$STAGING_DIR/usr/lib/systemd/system/legion-control-rgbd.service"
 install -m 0644 "$PROJECT_DIR/packaging/polkit/io.github.ulrickpsp.policy" \
     "$STAGING_DIR/usr/share/polkit-1/actions/io.github.ulrickpsp.policy"
 install -m 0644 \

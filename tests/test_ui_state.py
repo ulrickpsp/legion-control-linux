@@ -26,7 +26,6 @@ from legion_control.ui import (  # noqa: E402
     Operation,
 )
 from legion_control.ui_automation import AutomationPage  # noqa: E402
-from legion_control.effects import EffectKind  # noqa: E402
 from legion_control.ui_lighting import LightingPage  # noqa: E402
 from legion_control.ui_scenes import ScenePanel  # noqa: E402
 
@@ -259,121 +258,89 @@ class PageStateTests(unittest.TestCase):
         if success is not None:
             success()
 
-    def test_choosing_an_effect_writes_an_effect_not_a_static_frame(self) -> None:
+    def test_every_pattern_preset_reaches_the_keyboard(self) -> None:
         page = self._lighting_page()
 
-        page._effect_buttons[EffectKind.FIRE].set_active(True)
-        page._effect_write._fire()
-        self._settle()
+        for preset in (
+            page._preset_bands,
+            page._preset_aurora,
+            page._preset_fire,
+            page._preset_comet,
+            page._preset_crest,
+        ):
+            with self.subTest(preset=preset.__name__):
+                preset()
+                drafted = page.current_configuration()
+                page._static_write._fire()
+                self._settle()
 
-        self.assertTrue(self.client.rgb_effect.enabled)
-        self.assertIs(self.client.rgb_effect.kind, EffectKind.FIRE)
-        self.assertFalse(page._static_write.pending)
+                self.assertEqual(self.client.rgb_configuration.zones, drafted.zones)
+                self.assertGreater(len(set(drafted.zones)), 2)
 
-    def test_choosing_an_effect_turns_the_lighting_on(self) -> None:
-        """A static preset lights the keyboard up; an effect must not be different."""
+    def test_a_pattern_preset_keeps_the_brightness_the_user_chose(self) -> None:
+        page = self._lighting_page()
+        page._brightness.set_value(21)
+
+        page._preset_aurora()
+
+        self.assertEqual(page.current_configuration().brightness_percent, 21)
+
+    def test_applying_the_same_preset_twice_writes_once(self) -> None:
+        """Every write is a controller write; repeating one buys nothing."""
 
         page = self._lighting_page()
-        page._preset_off()
+        page._preset_fire()
         page._static_write._fire()
         self._settle()
+        written = len(self.mutations.calls)
 
-        page._effect_buttons[EffectKind.AURORA].set_active(True)
-        page._effect_write._fire()
-        self._settle()
+        page._preset_fire()
+        page._static_write._fire()
 
-        self.assertTrue(page._enabled_row.get_active())
-        self.assertTrue(self.client.rgb_effect.enabled)
+        self.assertEqual(len(self.mutations.calls), written)
 
-    def test_a_refresh_does_not_switch_the_lighting_back_off_under_an_effect(self) -> None:
-        """The on/off switch is shared, and the saved static frame is stale for it."""
-
+    def test_a_slider_returned_to_its_starting_value_writes_nothing(self) -> None:
         page = self._lighting_page()
-        page._preset_off()
+        page._preset_fire()
         page._static_write._fire()
         self._settle()
+        written = len(self.mutations.calls)
+        start = page.current_configuration().brightness_percent
 
-        page._effect_buttons[EffectKind.RAINBOW].set_active(True)
-        page.update_status(self.client.read_status())
+        page._brightness.set_value(start + 15)
+        page._brightness.set_value(start)
+        page._static_write._fire()
 
-        self.assertTrue(page._enabled_row.get_active())
-        self.assertTrue(page.current_effect().enabled)
+        self.assertEqual(len(self.mutations.calls), written)
 
-    def test_choosing_none_stops_the_animation(self) -> None:
+    def test_a_preset_matching_the_saved_state_is_still_written(self) -> None:
+        """The saved file records what the helper accepted, not what the keyboard
+        shows, so re-applying has to stay available as a way to recover."""
+
         page = self._lighting_page()
-        page._effect_buttons[EffectKind.COMET].set_active(True)
-        page._effect_write._fire()
-        self._settle()
-
-        page._effect_buttons[None].set_active(True)
-        page._effect_write._fire()
-        self._settle()
-
-        self.assertFalse(self.client.rgb_effect.enabled)
-        self.assertIs(self.client.rgb_effect.kind, EffectKind.COMET)
-
-    def test_a_static_preset_leaves_the_running_effect(self) -> None:
-        page = self._lighting_page()
-        page._effect_buttons[EffectKind.AURORA].set_active(True)
+        saved = page.current_configuration()
+        self.assertEqual(saved.zones, self.client.rgb_configuration.zones)
 
         page._preset_legion()
+        page._static_write._fire()
 
-        self.assertIsNone(page._effect_kind)
-        self.assertTrue(page._effect_buttons[None].get_active())
-        self.assertTrue(page._static_write.pending)
+        self.assertEqual(len(self.mutations.calls), 1)
 
-    def test_brightness_reaches_the_effect_while_one_is_running(self) -> None:
-        """A static write would stop the animation, so brightness must not send one."""
+    def test_a_failed_write_is_retried_by_the_next_edit(self) -> None:
+        """A rejected write never reached the keyboard, so it is not 'written'."""
 
         page = self._lighting_page()
-        page._effect_buttons[EffectKind.RAINBOW].set_active(True)
-        page._effect_write._fire()
-        self._settle()
-
-        page._brightness.set_value(33)
-        page._effect_write._fire()
-        self._settle()
-
-        self.assertEqual(self.client.rgb_effect.brightness_percent, 33)
-        self.assertTrue(self.client.rgb_effect.enabled)
-        self.assertFalse(page._static_write.pending)
-
-    def test_speed_is_ignored_while_the_keyboard_is_static(self) -> None:
-        page = self._lighting_page()
-
-        page._effect_speed.set_value(90)
-
-        self.assertFalse(page._effect_write.pending)
-
-    def test_refresh_does_not_discard_an_effect_waiting_to_be_written(self) -> None:
-        page = self._lighting_page()
-
-        page._effect_buttons[EffectKind.WAVE].set_active(True)
-        page.update_status(self.client.read_status())
-
-        self.assertIs(page._effect_kind, EffectKind.WAVE)
-
-    def test_a_failed_effect_write_keeps_the_selection_on_screen(self) -> None:
-        page = self._lighting_page()
-        page._effect_buttons[EffectKind.WAVE].set_active(True)
-        page._effect_write._fire()
+        page._preset_fire()
+        page._static_write._fire()
         _operation, _message, _success, failure = self.mutations.calls[-1]
-
-        self.assertIsNotNone(failure)
         assert failure is not None
         failure()
-        page.update_status(self.client.read_status())
+        written = len(self.mutations.calls)
 
-        self.assertIs(page._effect_kind, EffectKind.WAVE)
+        page._preset_fire()
+        page._static_write._fire()
 
-    def test_only_colour_aware_effects_offer_a_colour(self) -> None:
-        page = self._lighting_page()
-
-        page._effect_buttons[EffectKind.COMET].set_active(True)
-        self.assertTrue(page._effect_color_row.get_sensitive())
-
-        page._effect_buttons[EffectKind.FIRE].set_active(True)
-        self.assertFalse(page._effect_color_row.get_sensitive())
+        self.assertEqual(len(self.mutations.calls), written + 1)
 
     def test_quick_scene_applies_rgb_and_thermal_profile(self) -> None:
         with TemporaryDirectory() as directory:

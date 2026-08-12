@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Callable, Final, Protocol
+from typing import Any, Callable, Final
 
 
 RGB_CONFIG_VERSION: Final = 1
@@ -38,15 +38,7 @@ EXPECTED_RGB_KEYS: Final = frozenset({"version", "enabled", "brightness_percent"
 EXPECTED_COLOR_KEYS: Final = frozenset({"red", "green", "blue"})
 
 
-class RgbSessionPort(Protocol):
-    """A held-open controller that accepts successive report sequences."""
-
-    def send(self, reports: tuple[bytes, ...]) -> None: ...
-    def close(self) -> None: ...
-
-
 FeatureReportWriter = Callable[[Path, tuple[bytes, ...]], None]
-SessionFactory = Callable[[Path], RgbSessionPort]
 _RGB_REPORT_LOCK = threading.Lock()
 
 
@@ -152,44 +144,6 @@ def write_text_atomically(path: Path, payload: str, *, mode: int, prefix: str) -
         temporary_path.unlink(missing_ok=True)
 
 
-class RgbSession:
-    """One validated descriptor reused for successive frames.
-
-    Reopening and revalidating the controller for every frame of an animation
-    would spend more time proving identity than painting. The identity checks
-    still run, once, on the descriptor the frames are actually written to.
-    """
-
-    __slots__ = ("_descriptor",)
-
-    def __init__(self, device: Path) -> None:
-        self._descriptor: int | None = os.open(device, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW)
-        try:
-            _validate_open_device(self._descriptor)
-        except BaseException:
-            self.close()
-            raise
-
-    def send(self, reports: tuple[bytes, ...]) -> None:
-        descriptor = self._descriptor
-        if descriptor is None:
-            raise OSError(errno.EBADF, "La sesión RGB ya está cerrada")
-        _require_valid_reports(reports)
-        with _RGB_REPORT_LOCK:
-            _write_reports(descriptor, reports)
-
-    def close(self) -> None:
-        descriptor, self._descriptor = self._descriptor, None
-        if descriptor is not None:
-            os.close(descriptor)
-
-    def __enter__(self) -> RgbSession:
-        return self
-
-    def __exit__(self, *_exception: object) -> None:
-        self.close()
-
-
 class LegionRgbHardware:
     """Writes only the exact 24-zone ITE controller on supported product 83LU."""
 
@@ -197,12 +151,10 @@ class LegionRgbHardware:
         self,
         root: Path = Path("/"),
         feature_report_writer: FeatureReportWriter | None = None,
-        session_factory: SessionFactory | None = None,
     ) -> None:
         self._root = root.resolve()
         self._sys_root = (self._root / "sys").resolve()
         self._feature_report_writer = feature_report_writer or _send_feature_reports
-        self._session_factory = session_factory or RgbSession
 
     def is_available(self) -> bool:
         return self._is_supported_product() and self._device_path() is not None
@@ -214,17 +166,6 @@ class LegionRgbHardware:
         except OSError as error:
             raise RgbHardwareError(
                 f"El teclado RGB rechazó el cambio: {error.strerror or error}."
-            ) from error
-
-    def open_session(self) -> RgbSessionPort:
-        """Hold the controller open so an animation can paint frame after frame."""
-
-        device = self._require_device()
-        try:
-            return self._session_factory(device)
-        except OSError as error:
-            raise RgbHardwareError(
-                f"No se pudo abrir el teclado RGB: {error.strerror or error}."
             ) from error
 
     def _require_device(self) -> Path:
@@ -329,6 +270,23 @@ def alternating_rgb_configuration(
     return RgbConfiguration(enabled, brightness_percent, zones)
 
 
+def banded_rgb_configuration(
+    colors: tuple[RgbColor, ...],
+    brightness_percent: int,
+    *,
+    enabled: bool = True,
+) -> RgbConfiguration:
+    """Split the zones into equal consecutive bands, one per colour."""
+
+    if not colors:
+        raise ValueError("Se necesita al menos un color para las bandas.")
+    band = RGB_ZONE_COUNT / len(colors)
+    zones = tuple(
+        colors[min(len(colors) - 1, int(index / band))] for index in range(RGB_ZONE_COUNT)
+    )
+    return RgbConfiguration(enabled, brightness_percent, zones)
+
+
 def default_rgb_configuration() -> RgbConfiguration:
     return solid_rgb_configuration(
         RgbColor(229, 72, 77),
@@ -409,17 +367,6 @@ def reports_for(configuration: RgbConfiguration) -> tuple[bytes, ...]:
     if configuration.enabled and configuration.brightness_percent > 0:
         return _static_reports(configuration.zones, configuration.brightness_percent)
     return _off_reports()
-
-
-def zone_reports_for(zones: tuple[RgbColor, ...]) -> tuple[bytes, ...]:
-    """Only the colour report, for a frame whose profile and brightness are set.
-
-    An animation selects profile `1` and its brightness once when the session
-    opens; repeating either on every frame would add two ioctls per frame
-    without changing anything the controller shows.
-    """
-
-    return (_save_profile_report(zones),)
 
 
 def _static_reports(colors: tuple[RgbColor, ...], brightness_percent: int) -> tuple[bytes, ...]:

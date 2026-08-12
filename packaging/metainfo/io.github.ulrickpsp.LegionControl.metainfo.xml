@@ -29,16 +29,16 @@
     <release version="0.8.0" date="2026-08-12">
       <description>
         <p>
-          Añade seis efectos animados de teclado: respiración, arcoíris, onda,
-          cometa, fuego y aurora, con velocidad y color base. Los dibuja el
-          equipo enviando la misma secuencia estática ya verificada, frame a
-          frame; no envía ninguna orden de animación al firmware.
+          Añade cinco presets estáticos más elaborados que un degradado plano:
+          Bandas, Aurora, Fuego, Cometa y Cresta. Cada uno es un solo frame de
+          24 zonas, escrito una vez con la misma secuencia ya verificada.
         </p>
         <p>
-          Incorpora un servicio root que mantiene el controlador abierto para
-          pintar los frames, con política de dispositivos cerrada, sin
-          capacidades ni red, y que restaura la iluminación estática al parar.
-          Cualquier cambio estático detiene antes la animación.
+          Evita reescribir el teclado cuando el resultado sería idéntico al ya
+          enviado. Documenta el coste de escritura del controlador y su
+          comportamiento tras un apagado completo, junto con el motivo de no
+          incluir animación: no se pudo determinar si la orden de color llega a
+          memoria no volátil.
         </p>
       </description>
     </release>

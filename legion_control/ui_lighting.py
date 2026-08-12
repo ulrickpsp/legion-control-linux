@@ -13,19 +13,14 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
 from legion_control.client import ControlPort  # noqa: E402
-from legion_control.effects import (  # noqa: E402
-    COLOR_AWARE_KINDS,
-    EffectKind,
-    EffectSettings,
-    default_effect_settings,
-    effect_settings_from_document,
-)
 from legion_control.i18n import translate  # noqa: E402
+from legion_control.patterns import PatternKind, pattern_configuration  # noqa: E402
 from legion_control.rgb import (  # noqa: E402
     RGB_ZONE_COUNT,
     RgbColor,
     RgbConfiguration,
     alternating_rgb_configuration,
+    banded_rgb_configuration,
     default_rgb_configuration,
     gradient_rgb_configuration,
     rgb_configuration_from_document,
@@ -37,16 +32,6 @@ from legion_control.rgb import (  # noqa: E402
 # Long enough to swallow a slider drag, short enough to feel immediate.
 WRITE_DELAY_MS = 400
 
-# None is the static keyboard: no animation is running.
-EFFECT_CHOICES: tuple[tuple[str, "EffectKind | None"], ...] = (
-    ("Ninguno", None),
-    ("Respiración", EffectKind.BREATHING),
-    ("Arcoíris", EffectKind.RAINBOW),
-    ("Onda", EffectKind.WAVE),
-    ("Cometa", EffectKind.COMET),
-    ("Fuego", EffectKind.FIRE),
-    ("Aurora", EffectKind.AURORA),
-)
 
 Operation = Callable[[], dict[str, object]]
 MutationRunner = Callable[
@@ -197,9 +182,12 @@ class LightingPage(Adw.PreferencesPage):
         self._selected_zone = 0
         self._zones = list(default_rgb_configuration().zones)
         self._static_write = DebouncedWrite(WRITE_DELAY_MS, self._perform_static_write)
-        self._effect_write = DebouncedWrite(WRITE_DELAY_MS, self._perform_effect_write)
-        self._effect_kind: EffectKind | None = None
-        self._last_effect_kind = default_effect_settings().kind
+        # What this page has actually written, so a repeated preset or a slider
+        # returned to where it started costs the controller nothing. Deliberately
+        # not seeded from the saved configuration: that file records what the
+        # helper last accepted, not what the keyboard shows, so re-applying a
+        # preset stays available as a way to recover after Fn+Space.
+        self._written: RgbConfiguration | None = None
 
         status_group = Adw.PreferencesGroup()
         hero = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
@@ -287,92 +275,6 @@ class LightingPage(Adw.PreferencesPage):
         controls.add(color_row)
         self.add(controls)
 
-        effects = Adw.PreferencesGroup()
-        effects.set_title("Efectos animados")
-        effects.set_description(
-            "Los anima el equipo enviando frames verificados; no usa efectos del firmware"
-        )
-        self._effects_group = effects
-
-        effect_row = Adw.ActionRow()
-        effect_row.set_title("Efecto")
-        effect_row.set_subtitle("Se aplica al elegirlo y sigue tras reiniciar")
-        effect_box = Gtk.FlowBox()
-        effect_box.add_css_class("preset-box")
-        effect_box.set_selection_mode(Gtk.SelectionMode.NONE)
-        effect_box.set_homogeneous(True)
-        effect_box.set_min_children_per_line(2)
-        effect_box.set_max_children_per_line(4)
-        effect_box.set_row_spacing(8)
-        effect_box.set_column_spacing(8)
-        self._effect_buttons: dict[EffectKind | None, Gtk.ToggleButton] = {}
-        first_button: Gtk.ToggleButton | None = None
-        for label, kind in EFFECT_CHOICES:
-            button = Gtk.ToggleButton(label=label)
-            button.set_hexpand(True)
-            if first_button is None:
-                first_button = button
-            else:
-                button.set_group(first_button)
-            button.connect("toggled", self._on_effect_toggled, kind)
-            effect_box.append(button)
-            self._effect_buttons[kind] = button
-        # A preferences group appends plain widgets after its whole row list, so
-        # the buttons have to be a row themselves to stay under their own label.
-        effect_holder = Adw.PreferencesRow()
-        effect_holder.set_activatable(False)
-        effect_holder.set_focusable(False)
-        effect_box.set_margin_top(6)
-        effect_box.set_margin_bottom(12)
-        effect_box.set_margin_start(12)
-        effect_box.set_margin_end(12)
-        effect_holder.set_child(effect_box)
-        effects.add(effect_row)
-        effects.add(effect_holder)
-
-        self._speed_row = Adw.ActionRow()
-        self._speed_row.set_title("Velocidad")
-        self._effect_speed = Gtk.Adjustment(
-            value=default_effect_settings().speed_percent,
-            lower=1,
-            upper=100,
-            step_increment=1,
-            page_increment=10,
-        )
-        self._effect_speed.connect("value-changed", self._on_speed_changed)
-        speed_scale = Gtk.Scale(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            adjustment=self._effect_speed,
-        )
-        speed_scale.set_draw_value(False)
-        speed_scale.set_size_request(220, -1)
-        speed_scale.update_property(
-            [Gtk.AccessibleProperty.LABEL],
-            ["Velocidad del efecto en por ciento"],
-        )
-        self._speed_value = Gtk.Label(label="45 %")
-        self._speed_value.add_css_class("measurement")
-        speed_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        speed_box.append(speed_scale)
-        speed_box.append(self._speed_value)
-        self._speed_row.add_suffix(speed_box)
-        effects.add(self._speed_row)
-
-        self._effect_color_row = Adw.ActionRow()
-        self._effect_color_row.set_title("Color del efecto")
-        self._effect_color_row.set_subtitle("Lo usan Respiración, Onda y Cometa")
-        effect_color_dialog = Gtk.ColorDialog()
-        effect_color_dialog.set_with_alpha(False)
-        self._effect_color = Gtk.ColorDialogButton(dialog=effect_color_dialog)
-        self._effect_color.update_property(
-            [Gtk.AccessibleProperty.LABEL],
-            ["Color base del efecto animado"],
-        )
-        self._effect_color.connect("notify::rgba", self._on_effect_color_selected)
-        self._effect_color_row.add_suffix(self._effect_color)
-        effects.add(self._effect_color_row)
-        self.add(effects)
-
         zones_group = Adw.PreferencesGroup()
         zones_group.set_title("Zonas")
         zones_group.set_description("Selecciona una de las 24 zonas y cambia su color")
@@ -419,6 +321,11 @@ class LightingPage(Adw.PreferencesPage):
             ("Brasa", self._preset_ember),
             ("Nocturno", self._preset_night),
             ("Ajedrez", self._preset_checker),
+            ("Bandas", self._preset_bands),
+            ("Aurora", self._preset_aurora),
+            ("Fuego", self._preset_fire),
+            ("Cometa", self._preset_comet),
+            ("Cresta", self._preset_crest),
             ("Apagar", self._preset_off),
         ):
             button = Gtk.Button(label=label)
@@ -430,7 +337,6 @@ class LightingPage(Adw.PreferencesPage):
 
         self._color_button.connect("notify::rgba", self._on_color_selected)
         self._load_configuration(default_rgb_configuration())
-        self._load_effect(default_effect_settings(), False)
 
     def update_status(self, status: dict[str, object]) -> None:
         capabilities = _dictionary(status.get("capabilities"))
@@ -441,34 +347,13 @@ class LightingPage(Adw.PreferencesPage):
             try:
                 # The on/off switch is shared by both modes, so the static
                 # configuration only owns it while nothing is animating.
-                self._load_configuration(
-                    rgb_configuration_from_document(document),
-                    adopt_enabled=self._effect_kind is None and self._effect_write.settled,
-                )
+                self._load_configuration(rgb_configuration_from_document(document))
             except ValueError:
                 known = False
-        effect_active = bool(status.get("rgb_effect_active"))
-        effect_document = status.get("rgb_effect")
-        if self._effect_write.settled and isinstance(effect_document, dict):
-            try:
-                self._load_effect(
-                    effect_settings_from_document(effect_document),
-                    effect_active,
-                )
-            except ValueError:
-                effect_active = False
         if not self._available:
             self._status_pill.set_label(translate("No disponible"))
             self._status_copy.set_label(
                 translate("No aparece 048d:c195 en la interfaz HID esperada")
-            )
-        elif effect_active and self._effect_kind is not None:
-            self._status_pill.set_label(translate("En marcha"))
-            self._status_copy.set_label(
-                translate(
-                    "Efecto {name} · lo anima el servicio local",
-                    name=self._effect_label(self._effect_kind),
-                )
             )
         elif known:
             self._status_pill.set_label(translate("Aplicado"))
@@ -487,31 +372,9 @@ class LightingPage(Adw.PreferencesPage):
             zones=tuple(self._zones),
         )
 
-    def current_effect(self) -> EffectSettings:
-        """The effect as edited. Brightness and on/off are shared with static mode."""
-
-        rgba = self._effect_color.get_rgba()
-        return EffectSettings(
-            kind=self._effect_kind or self._last_effect_kind,
-            speed_percent=round(self._effect_speed.get_value()),
-            brightness_percent=round(self._brightness.get_value()),
-            color=RgbColor(
-                round(rgba.red * 255),
-                round(rgba.green * 255),
-                round(rgba.blue * 255),
-            ),
-            enabled=self._effect_kind is not None and self._enabled_row.get_active(),
-        )
-
-    def _load_configuration(
-        self,
-        configuration: RgbConfiguration,
-        *,
-        adopt_enabled: bool = True,
-    ) -> None:
+    def _load_configuration(self, configuration: RgbConfiguration) -> None:
         self._refreshing = True
-        if adopt_enabled:
-            self._enabled_row.set_active(configuration.enabled)
+        self._enabled_row.set_active(configuration.enabled)
         self._brightness.set_value(configuration.brightness_percent)
         self._zones = list(configuration.zones)
         for button, color in zip(
@@ -548,7 +411,6 @@ class LightingPage(Adw.PreferencesPage):
         )
         self._zones[self._selected_zone] = color
         self._zone_buttons[self._selected_zone].set_color(color)
-        self._leave_effect()
         self._static_write.schedule()
 
     def _on_apply_color_to_all(self, _button: Gtk.Button) -> None:
@@ -561,12 +423,12 @@ class LightingPage(Adw.PreferencesPage):
         _parameter: object,
     ) -> None:
         if not self._refreshing:
-            self._schedule_active_write()
+            self._static_write.schedule()
 
     def _on_brightness_changed(self, adjustment: Gtk.Adjustment) -> None:
         self._brightness_value.set_label(f"{adjustment.get_value():.0f} %")
         if not self._refreshing:
-            self._schedule_active_write()
+            self._static_write.schedule()
 
     def _preset_legion(self) -> None:
         self._set_preset(solid_rgb_configuration(RgbColor(229, 32, 47), 70))
@@ -624,6 +486,27 @@ class LightingPage(Adw.PreferencesPage):
             alternating_rgb_configuration(RgbColor(229, 32, 47), RgbColor(12, 12, 14), 70)
         )
 
+    def _preset_bands(self) -> None:
+        """Three saturated bands. It began as a diagnostic marker and stayed."""
+        self._set_preset(
+            banded_rgb_configuration(
+                (RgbColor(255, 0, 0), RgbColor(0, 255, 0), RgbColor(0, 0, 255)),
+                100,
+            )
+        )
+
+    def _preset_aurora(self) -> None:
+        self._set_preset(pattern_configuration(PatternKind.AURORA, RgbColor(0, 0, 0), 70, 0.75))
+
+    def _preset_fire(self) -> None:
+        self._set_preset(pattern_configuration(PatternKind.FIRE, RgbColor(0, 0, 0), 70, 0.37))
+
+    def _preset_comet(self) -> None:
+        self._set_preset(pattern_configuration(PatternKind.COMET, RgbColor(0, 229, 255), 70, 0.37))
+
+    def _preset_crest(self) -> None:
+        self._set_preset(pattern_configuration(PatternKind.WAVE, RgbColor(150, 60, 255), 70, 0.5))
+
     def _preset_off(self) -> None:
         configuration = self.current_configuration()
         self._set_preset(
@@ -639,35 +522,13 @@ class LightingPage(Adw.PreferencesPage):
                 configuration.zones,
             )
         )
-        self._leave_effect()
         self._static_write.schedule()
 
     def _set_all_zones(self, color: RgbColor) -> None:
         self._zones = [color] * RGB_ZONE_COUNT
         for button in self._zone_buttons:
             button.set_color(color)
-        self._leave_effect()
         self._static_write.schedule()
-
-    def _schedule_active_write(self) -> None:
-        """Send the change to whichever mode is currently painting the keyboard."""
-
-        if self._effect_kind is None:
-            self._static_write.schedule()
-        else:
-            self._effect_write.schedule()
-
-    def _leave_effect(self) -> None:
-        """A static edit ends the animation; show that before the helper confirms."""
-
-        if self._effect_kind is None:
-            return
-        self._effect_kind = None
-        self._refreshing = True
-        self._effect_buttons[None].set_active(True)
-        self._refreshing = False
-        self._sync_effect_sensitivity()
-        self._effect_write.schedule()
 
     def _perform_static_write(self) -> bool:
         if not self._available:
@@ -677,110 +538,33 @@ class LightingPage(Adw.PreferencesPage):
         except ValueError as error:
             self._show_error(str(error))
             return False
+        if configuration == self._written:
+            # Re-clicking a preset, or returning a slider to where it started,
+            # must not cost the controller another write.
+            return False
+        self._written = configuration
         self._run_mutation(
             lambda: self._client.set_rgb_configuration(configuration),
             translate("Iluminación aplicada en las 24 zonas."),
             self._static_write_succeeded,
-            self._static_write.failed_once,
+            self._static_write_failed,
         )
         return True
 
-    def _perform_effect_write(self) -> bool:
-        if not self._available:
-            return False
-        try:
-            settings = self.current_effect()
-        except ValueError as error:
-            self._show_error(str(error))
-            return False
-        message = (
-            translate("Efecto detenido; vuelve la iluminación estática.")
-            if not settings.enabled
-            else translate("Efecto {name} en marcha.", name=self._effect_label(settings.kind))
-        )
-        self._run_mutation(
-            lambda: self._client.set_rgb_effect(settings),
-            message,
-            self._effect_write_succeeded,
-            self._effect_write.failed_once,
-        )
-        return True
+    def _static_write_failed(self) -> None:
+        """A rejected write never reached the keyboard, so it is not written."""
+
+        self._written = None
+        self._static_write.failed_once()
 
     def _static_write_succeeded(self) -> None:
         if self._static_write.succeeded():
             self._request_refresh()
 
-    def _effect_write_succeeded(self) -> None:
-        if self._effect_write.succeeded():
-            self._request_refresh()
-
-    def _on_effect_toggled(
-        self,
-        button: Gtk.ToggleButton,
-        kind: EffectKind | None,
-    ) -> None:
-        if self._refreshing or not button.get_active():
-            return
-        self._effect_kind = kind
-        if kind is not None:
-            self._last_effect_kind = kind
-            # Choosing an effect means "light this up", exactly as choosing a
-            # static preset does. Leaving the keyboard dark would look broken.
-            self._set_lighting_enabled(True)
-        self._sync_effect_sensitivity()
-        self._effect_write.schedule()
-
-    def _set_lighting_enabled(self, enabled: bool) -> None:
-        """Move the switch without letting it queue a second write of its own."""
-
-        if self._enabled_row.get_active() == enabled:
-            return
-        self._refreshing = True
-        self._enabled_row.set_active(enabled)
-        self._refreshing = False
-
-    def _on_speed_changed(self, adjustment: Gtk.Adjustment) -> None:
-        self._speed_value.set_label(f"{adjustment.get_value():.0f} %")
-        if not self._refreshing and self._effect_kind is not None:
-            self._effect_write.schedule()
-
-    def _on_effect_color_selected(
-        self,
-        _button: Gtk.ColorDialogButton,
-        _parameter: object,
-    ) -> None:
-        if not self._refreshing and self._effect_kind in COLOR_AWARE_KINDS:
-            self._effect_write.schedule()
-
-    def _sync_effect_sensitivity(self) -> None:
-        self._speed_row.set_sensitive(self._effect_kind is not None)
-        self._effect_color_row.set_sensitive(self._effect_kind in COLOR_AWARE_KINDS)
-
-    def _load_effect(self, settings: EffectSettings, active: bool) -> None:
-        self._refreshing = True
-        self._effect_kind = settings.kind if active else None
-        self._last_effect_kind = settings.kind
-        self._effect_buttons[self._effect_kind].set_active(True)
-        self._effect_speed.set_value(settings.speed_percent)
-        self._effect_color.set_rgba(_rgba(settings.color))
-        if active:
-            # A running animation is lit by definition.
-            self._enabled_row.set_active(True)
-        self._refreshing = False
-        self._sync_effect_sensitivity()
-
-    @staticmethod
-    def _effect_label(kind: EffectKind) -> str:
-        for label, choice in EFFECT_CHOICES:
-            if choice is kind:
-                return translate(label)
-        return kind.value
-
     def _set_controls_sensitive(self, sensitive: bool) -> None:
         self._controls_group.set_sensitive(sensitive)
         self._zones_group.set_sensitive(sensitive)
         self._presets_group.set_sensitive(sensitive)
-        self._effects_group.set_sensitive(sensitive)
 
 
 def _rounded_rectangle(

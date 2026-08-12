@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from legion_control.i18n import (
+    _ENTRIES,
     LANGUAGES,
     LanguageStore,
     active_language,
@@ -59,6 +60,18 @@ class InternationalizationTests(unittest.TestCase):
                 with patch.dict(os.environ, {"LEGION_CONTROL_LANGUAGE": "zh_CN"}):
                     configure_startup_language()
             self.assertEqual(active_language(), "zh")
+
+
+class CatalogHygieneTests(unittest.TestCase):
+    def test_no_source_string_is_defined_twice(self) -> None:
+        """A duplicate silently shadows one of the two translations."""
+
+        sources = [row[0] for row in _ENTRIES]
+        duplicates = sorted({item for item in sources if sources.count(item) > 1})
+        self.assertEqual(duplicates, [])
+
+    def test_every_row_carries_all_five_languages(self) -> None:
+        self.assertEqual({len(row) for row in _ENTRIES}, {len(LANGUAGES)})
 
 
 if __name__ == "__main__":

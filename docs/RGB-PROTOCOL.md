@@ -117,102 +117,74 @@ Off uses two reports:
 Both are padded to 960 bytes. The saved application configuration retains its
 24 colors so they can be reused when lighting is enabled again.
 
-## Software-rendered animation
+## Static patterns, and why animation is not implemented
 
-Animated effects are rendered by this project, not by the controller. Each
-frame is an ordinary static configuration sent through the sequence documented
-above. **No animation, effect-type, speed, or direction command is claimed or
-sent.** The fourteen constant bytes inside every colour group are reproduced
-unchanged on every frame, exactly as for a static preset.
+Legion Control ships patterns richer than a flat gradient — aurora, fire, a
+comet, a crest, colour bands — by sampling a continuous field at one phase and
+writing that single frame through the sequence above. One preset, one write.
 
-This distinction is the whole reason the feature exists in this form. Versions
-`0.4.5`–`0.4.7` were withdrawn for assuming semantics the hardware had not
-confirmed. Naming one of those opaque bytes an "effect selector" and sweeping
-its values would repeat that mistake, so the project animates with the report
-sequence it has actually verified instead.
-
-Frames are written by a root service, `legion-control-rgbd`, because a
-`pkexec` round trip per frame would spawn a privileged process many times a
-second. The service:
-
-- opens the same validated `/dev/hidrawN` once and runs the same VID/PID and
-  descriptor checks on that descriptor;
-- sends `C8` and `CE` once, when the session opens, since profile selection and
-  brightness do not change between frames;
-- sends only the `CB` colour report per frame, at 12.5 frames per second;
-- skips a frame whose 24 colours are identical to the previous one;
-- reopens the controller at most once, to survive a USB re-enumeration after
-  resume, and then fails rather than retrying indefinitely;
-- writes the last saved static configuration back when it stops.
-
-Effects are pure functions of their settings and the elapsed time, so a
-restarted service resumes the same animation rather than a different one.
-
-A static write and an animation must never share the controller. The helper
-stops the effect service before applying a static configuration, and
-`systemctl disable --now` returns only after the service's restore step has
-finished, which orders the two writers.
+Animating them by resending successive phases was built and then removed. The
+reasoning is recorded here because the measurements are the useful part.
 
 ### Measured cost
 
-Measured on the validated unit, as the median of twenty `HIDIOCSFEATURE` calls
-on one open descriptor:
+Median of twenty `HIDIOCSFEATURE` calls on one open descriptor, on the
+validated unit:
 
-| Report | Median | Notes |
+| Report | Payload | Median |
 |---|---|---|
-| `C8` select profile | 5.97 ms | |
-| `CE` set brightness | 5.90 ms | |
-| `CB` one colour group | 42.02 ms | fastest observed 8.73 ms |
-| `CB` twenty-four groups | 56.40 ms | |
+| `C8` select profile | 1 byte | 6.03 ms |
+| `CB` off | 3 bytes, no colour | 37.67 ms |
+| `CB` one colour group | one colour | 37.50 ms |
+| `CB` twenty-four groups | 24 colours | 47.02 ms |
+| `CE` set brightness | 1 byte | 5.90 ms |
 
-A sustained burst of 200 twenty-four-group frames, sent as fast as the
-controller accepted them, held steady at 56.51 ms median over its first half
-against 56.52 ms over its second, and 67.27 ms at the 95th percentile. Nothing
-degraded within that burst, but every frame missed a 20 fps deadline: the
-controller tops out near **17 frames per second** when saturated.
+The cost belongs to the `CB` command, not to its contents. The off report
+carries no colour at all and still costs as much as a coloured one. The first
+`CB` after a pause completes in about 7 ms and later ones in about 37 ms, which
+reads as controller back-pressure rather than per-byte work.
 
-Those figures describe back-pressure, not the intrinsic cost. Running the
-service paced at 12.5 frames per second on the same unit, the median frame fell
-to 16–23 ms, and every effect held its target:
+Driven as fast as it accepted them, the controller sustained about 17 frames per
+second, holding steady across a 200-frame burst: 56.51 ms median over the first
+half against 56.52 ms over the second. Paced at 12.5 frames per second instead,
+the median frame fell to 16–23 ms and the whole animation cost about 0.36 % of
+one CPU.
 
-| Effect | Frames/s | Median frame | CPU |
-|---|---|---|---|
-| breathing | 10.7 | 8.8 ms | 0.31 % |
-| rainbow | 12.1 | 22.6 ms | 0.35 % |
-| wave | 12.2 | 15.8 ms | 0.37 % |
-| comet | 12.3 | 19.2 ms | 0.37 % |
-| fire | 12.1 | 22.7 ms | 0.36 % |
-| aurora | 12.1 | 22.6 ms | 0.36 % |
+### Controller wear: unresolved
 
-A frame whose 24 zones share one colour is cheapest, because the cost tracks
-the number of distinct colour groups rather than the constant 960-byte report
-size. Breathing falls below its target for a different reason: consecutive
-frames round to the same 24 colours and are skipped.
+Command `CB` is described above as saving zone groups into profile `1`. Whether
+that write reaches non-volatile storage **could not be determined**, and it
+decides whether continuous animation is safe: at 12.5 frames per second, even a
+100k-cycle part would be exhausted in roughly 2.2 hours of use.
 
-The service therefore paces itself at 12.5 frames per second. Asking for more
-only saturates the controller, triples the per-frame cost, and writes more
-often.
+Two experiments were run on the validated unit.
 
-### Controller wear
+*Persistence.* A marker frame of eight zones pure red, eight pure green and
+eight pure blue survived two full power cycles, and a later all-white frame at
+raw brightness level 1 survived a third. This was verified rather than assumed:
+the journal shows `systemd-poweroff.service` and `poweroff.target`,
+`/var/lib/legion-control/rgb-config.json` kept its pre-shutdown mtime, and no
+application process or service was running. A live blink test confirmed the
+writes reach the visible keyboard. The controller retains colour and brightness
+across S5 — but a laptop normally keeps that controller powered from the
+internal battery in S5, and the rail cannot be cut without disassembly, so
+survival does not establish flash.
 
-Command `CB` is described in this document as saving zone groups into profile
-`1`. Whether that write reaches non-volatile storage **is not established**,
-and it matters: a page-programming write repeated many times a second would be
-a durability problem rather than a performance one.
+*Latency.* An early reading of the timings above suggested the expense was
+storing colour data. The off report refutes it: no colour, same cost. A
+fixed-cost profile refresh and a fixed-cost page program are indistinguishable
+from here.
 
-The measurement above does not settle it. `CB` costing seven to ten times `C8`
-or `CE`, and growing with the number of groups, is consistent with programming
-storage per group. It is equally consistent with pushing 24 LED values over an
-internal bus, which is volatile. The two hypotheses predict the same latency
-profile, so this evidence cannot distinguish them.
+So the question stays open, and one asymmetry settles the decision instead. The
+firmware animates the keyboard by itself through `Fn+Space`, so a path that does
+not wear anything must exist inside it — reached by one of the opaque constant
+bytes this project refuses to guess at. Shipping continuous animation and being
+wrong damages the controller permanently; withholding it costs motion, and the
+patterns survive as still frames.
 
-The test that would distinguish them is persistence across a full power loss:
-apply a distinctive static frame, shut down, disconnect power, and observe
-whether the controller still shows it. That has not been performed.
-
-Until it is, animation is treated as carrying an unquantified wear risk. It is
-opt-in, never starts on its own, and stops whenever any static change is
-applied.
+Anyone repeating this on their own hardware should start from the persistence
+test, and should cut power to the controller properly before concluding
+anything.
 
 ## Concurrency and persistence
 
@@ -237,15 +209,16 @@ visibly applied.
 - arbitrary commands or raw caller-provided reports;
 - device-path overrides;
 - interface `01` LampArray writes;
-- firmware animation commands, including any interpretation of the opaque
-  constant bytes as an effect, speed, or direction selector;
+- animation of any kind, whether by a firmware command or by resending frames;
+- any interpretation of the opaque constant bytes as an effect, speed, or
+  direction selector;
 - controller reads that are not proven safe;
 - USB IDs, DMI products, or descriptor families other than the validated path.
 
-Animation rendered by this project from the verified static sequence is
+Static patterns rendered by this project from the verified static sequence are
 supported and described under
-[Software-rendered animation](#software-rendered-animation). It is not a
-firmware effect.
+[Static patterns](#static-patterns-and-why-animation-is-not-implemented). They
+are single frames, not effects.
 
 ## Research provenance
 

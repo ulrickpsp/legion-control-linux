@@ -129,22 +129,8 @@ def build_doctor_report(
             translate("controlador ITE detectado") if rgb_available else translate("no disponible"),
             DoctorSeverity.OK if rgb_available else DoctorSeverity.WARNING,
         ),
-        DoctorFinding(
-            "rgb_effect",
-            translate("Efecto de teclado"),
-            _rgb_effect_value(status),
-            DoctorSeverity.OK,
-        ),
     )
     return DoctorReport(findings)
-
-
-def _rgb_effect_value(status: dict[str, object]) -> str:
-    if not bool(status.get("rgb_effect_active")):
-        return translate("ninguno")
-    effect = _dictionary(status.get("rgb_effect"))
-    kind = _text(effect.get("kind"), translate("desconocido"))
-    return translate("{kind} al {speed} %", kind=kind, speed=effect.get("speed_percent", 0))
 
 
 def _fan_control_value(capabilities: dict[str, Any]) -> str:

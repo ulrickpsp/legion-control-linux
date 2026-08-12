@@ -85,41 +85,10 @@ class PackagingSafetyTests(unittest.TestCase):
         }
         self.assertTrue(required_lines.issubset(set(unit.splitlines())))
 
-    def test_effect_service_is_restricted_to_the_keyboard_and_restores_static(self) -> None:
-        unit = _read("packaging/systemd/legion-control-rgbd.service")
-        required_lines = {
-            "ExecStopPost=/usr/libexec/legion-control-rgbd --restore-static",
-            "NoNewPrivileges=yes",
-            "PrivateNetwork=yes",
-            "DevicePolicy=closed",
-            "DeviceAllow=char-hidraw rw",
-            "ProtectSystem=strict",
-            "ProtectHome=yes",
-            "ProtectKernelModules=yes",
-            "CapabilityBoundingSet=",
-            "AmbientCapabilities=",
-            "StartLimitBurst=3",
-        }
-        self.assertTrue(required_lines.issubset(set(unit.splitlines())))
-
-    def test_effect_service_does_not_hide_the_controller_it_needs(self) -> None:
-        """PrivateDevices would remove /dev/hidrawN, so the closed device policy
-        above is the equivalent restriction that still reaches the keyboard."""
-
-        unit = _read("packaging/systemd/legion-control-rgbd.service")
-        self.assertNotIn("PrivateDevices=yes", unit)
-
-    def test_effect_service_is_installed_by_the_build(self) -> None:
-        build_script = _read("scripts/build-deb.sh")
-        self.assertIn("packaging/libexec/legion-control-rgbd", build_script)
-        self.assertIn("packaging/systemd/legion-control-rgbd.service", build_script)
-
     def test_package_removal_attempts_firmware_restore(self) -> None:
         prerm = _read("packaging/debian/prerm")
         self.assertIn("systemctl disable --now legion-control-fand.service", prerm)
         self.assertIn("/usr/libexec/legion-control-fand --restore-auto", prerm)
-        self.assertIn("systemctl disable --now legion-control-rgbd.service", prerm)
-        self.assertIn("/usr/libexec/legion-control-rgbd --restore-static", prerm)
 
     def test_future_upgrades_restore_an_active_manual_service(self) -> None:
         marker = "/run/legion-control-fand.restart-after-upgrade"
@@ -133,21 +102,10 @@ class PackagingSafetyTests(unittest.TestCase):
         self.assertIn('[ -f "$RESTART_MARKER" ]', postinst)
         self.assertIn("systemctl enable --now legion-control-fand.service", postinst)
 
-    def test_a_running_effect_survives_a_package_upgrade(self) -> None:
-        marker = "/run/legion-control-rgbd.restart-after-upgrade"
-        prerm = _read("packaging/debian/prerm")
-        postinst = _read("packaging/debian/postinst")
-
-        self.assertIn("systemctl is-active --quiet legion-control-rgbd.service", prerm)
-        self.assertIn(marker, prerm)
-        self.assertIn(f"RGB_RESTART_MARKER={marker}", postinst)
-        self.assertIn("systemctl enable --now legion-control-rgbd.service", postinst)
-
     def test_purge_removes_only_known_state_files(self) -> None:
         postrm = _read("packaging/debian/postrm")
         self.assertIn("/var/lib/legion-control/fan-config.json", postrm)
         self.assertIn("/var/lib/legion-control/rgb-config.json", postrm)
-        self.assertIn("/var/lib/legion-control/rgb-effect.json", postrm)
         self.assertNotIn("rm -rf", postrm)
         self.assertNotIn("rm -r ", postrm)
 
@@ -156,7 +114,6 @@ class PackagingSafetyTests(unittest.TestCase):
             "packaging/bin/legion-control",
             "packaging/libexec/legion-control-helper",
             "packaging/libexec/legion-control-fand",
-            "packaging/libexec/legion-control-rgbd",
         )
         for relative_path in launchers:
             with self.subTest(launcher=relative_path):

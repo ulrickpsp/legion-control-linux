@@ -6,10 +6,10 @@ Native GTK4/libadwaita control center for the Lenovo Legion Pro 5 16IAX10H
 > [!WARNING]
 > **Status: alpha.** All physical validation comes from one unit. For 0.8.0 it
 > covered the read-only report, platform profiles, fixed RPM, a curve under
-> load, restore-to-firmware, the 24-zone RGB path including the presets, and
-> the animated effect service on the real controller. The emergency thermal
-> paths at 92 °C and 98 °C were not reached, and package installation, upgrade
-> and removal were not exercised.
+> load, restore-to-firmware, the 24-zone RGB path including every preset, and
+> the controller's write latency and power-cycle persistence. The emergency
+> thermal paths at 92 °C and 98 °C were not reached, and package installation,
+> upgrade and removal were not exercised.
 > This is not a compatibility promise for another laptop, although truly
 > equivalent units —same `83LU` DMI, BIOS, ITE controller, and WMI attributes—
 > are more likely to behave the same. The application does not expand its
@@ -33,11 +33,8 @@ DKMS module, firmware flash, account, telemetry, or network service.
 - Custom sustained/slow CPU power limits within firmware-published bounds.
 - Static 24-zone RGB, brightness, presets, wave/gradient frames, and off for
   ITE `048d:c195`.
-- Six animated keyboard effects — breathing, rainbow, wave, comet, fire and
-  aurora — rendered locally as successive verified static frames by a hardened
-  root service. No firmware animation command is sent. Whether repeated colour
-  writes wear the controller is unresolved, so effects are opt-in; see
-  [`docs/RGB-PROTOCOL.md`](docs/RGB-PROTOCOL.md).
+- Static patterns beyond flat gradients: aurora, fire, comet, crest and colour
+  bands, each a single verified frame costing one write.
 - Three local quick scenes: Silence, Work, and Game.
 - Opt-in AC/battery scene automation while the application is open.
 - Battery conservation, Fn Lock, and camera power when exposed by the kernel.
@@ -188,12 +185,13 @@ gates. A successful unit suite is not evidence for a new laptop model.
 ## Scope and roadmap
 
 Version 0.8.0 deliberately excludes overclocking, GPU/MUX switching, animated
-RGB *firmware* effects, firmware flashing, and third-party kernel modules.
-Static gradients and waves, and the animated effects added in this release, use
-only the verified static report sequence: the animation is computed on the
-machine and sent frame by frame, and no effect, speed, or direction command is
-claimed or sent to the controller. New hardware support requires its own
-reversible evidence.
+RGB effects of any kind, firmware flashing, and third-party kernel modules.
+Every lighting preset, including the patterns added in this release, is one
+static frame from the verified report sequence. Animation by resending frames
+was built, measured and removed: whether repeated colour writes wear the
+controller could not be determined, and the evidence is recorded in
+[`docs/RGB-PROTOCOL.md`](docs/RGB-PROTOCOL.md). New hardware support requires
+its own reversible evidence.
 
 ## Alpha disclaimer
 

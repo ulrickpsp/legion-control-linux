@@ -8,18 +8,13 @@ import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic, sleep
 from typing import Final, Iterator, Protocol
 
 from legion_control.config import ConfigStore, default_policy, policy_from_json
 from legion_control.domain import FanBounds, FanMode, FanPolicy
-from legion_control.effects import (
-    EffectConfigStore,
-    EffectSettings,
-    effect_settings_from_json,
-)
 from legion_control.linux import (
     CapabilityReport,
     HardwareError,
@@ -43,8 +38,6 @@ from legion_control.system_contract import (
     FAN_CONFIG_PATH,
     FAN_SERVICE_NAME,
     RGB_CONFIG_PATH,
-    RGB_EFFECT_CONFIG_PATH,
-    RGB_SERVICE_NAME,
     SYSTEMCTL_PATH,
 )
 
@@ -52,7 +45,6 @@ from legion_control.system_contract import (
 CONFIG_PATH: Final = FAN_CONFIG_PATH
 SYSTEMCTL: Final = SYSTEMCTL_PATH
 SERVICE_NAME: Final = FAN_SERVICE_NAME
-RGB_SERVICE: Final = RGB_SERVICE_NAME
 CONTROL_LOCK_TIMEOUT_SECONDS: Final = 15.0
 ALLOWED_PROFILES: Final = frozenset({"low-power", "balanced", "performance", "max-power", "custom"})
 
@@ -86,20 +78,19 @@ class ServicePort(Protocol):
 
 
 @dataclass(slots=True)
-class SystemdUnitService:
-    unit: str = SERVICE_NAME
+class SystemdFanService:
     executable: Path = SYSTEMCTL
 
     def activate(self) -> None:
-        self._run("enable", "--now", self.unit)
+        self._run("enable", "--now", SERVICE_NAME)
 
     def deactivate(self) -> None:
-        self._run("disable", "--now", self.unit)
+        self._run("disable", "--now", SERVICE_NAME)
 
     def is_active(self) -> bool:
         try:
             result = subprocess.run(
-                [str(self.executable), "is-active", "--quiet", self.unit],
+                [str(self.executable), "is-active", "--quiet", SERVICE_NAME],
                 check=False,
                 timeout=5,
                 env=_safe_environment(),
@@ -130,18 +121,11 @@ class PrivilegedController:
     service: ServicePort
     rgb_hardware: RgbPort | None = None
     rgb_store: RgbConfigStore | None = None
-    rgb_service: ServicePort | None = None
-    rgb_effect_store: EffectConfigStore | None = None
 
     def status(self) -> dict[str, object]:
         report = self.hardware.status().to_dict()
         report["fan_service_active"] = self.service.is_active()
         report["fan_policy"] = _policy_document(self.store.load())
-        effect = self._saved_effect()
-        report["rgb_effect"] = effect.to_dict() if effect is not None else None
-        report["rgb_effect_active"] = (
-            self.rgb_service.is_active() if self.rgb_service is not None else False
-        )
         return report
 
     def set_profile(self, profile: str) -> dict[str, object]:
@@ -218,9 +202,6 @@ class PrivilegedController:
             raise HelperError("El soporte RGB no está instalado.")
         if not self.rgb_hardware.is_available():
             raise HelperError("No aparece el teclado RGB 048d:c195 en la interfaz esperada.")
-        # A running effect repaints the keyboard many times a second, so it has
-        # to stop before a static frame is written or it would erase it.
-        self._stop_rgb_effect()
         try:
             self.rgb_hardware.apply(configuration)
         except (RgbHardwareError, OSError, ValueError) as error:
@@ -238,59 +219,6 @@ class PrivilegedController:
             "brightness_percent": configuration.brightness_percent,
             "zones": len(configuration.zones),
         }
-
-    def set_rgb_effect(self, settings: EffectSettings) -> dict[str, object]:
-        """Hand an animation to the effect service, or stop it.
-
-        The service reads the saved settings, so a running animation switches
-        effect without restarting and without a visible gap.
-        """
-
-        if self.rgb_hardware is None or self.rgb_effect_store is None:
-            raise HelperError("El soporte RGB no está instalado.")
-        if self.rgb_service is None:
-            raise HelperError("El servicio de efectos no está instalado.")
-        if not self.rgb_hardware.is_available():
-            raise HelperError("No aparece el teclado RGB 048d:c195 en la interfaz esperada.")
-        self.rgb_effect_store.save(settings)
-        if not settings.enabled or settings.brightness_percent == 0:
-            self.rgb_service.deactivate()
-            return {"effect": settings.kind.value, "service_active": False}
-        try:
-            self.rgb_service.activate()
-        except Exception:
-            self._disable_saved_effect()
-            raise
-        return {
-            "effect": settings.kind.value,
-            "speed_percent": settings.speed_percent,
-            "brightness_percent": settings.brightness_percent,
-            "service_active": True,
-        }
-
-    def _stop_rgb_effect(self) -> None:
-        """Stop the animation, keeping the chosen effect for the next time."""
-
-        settings = self._saved_effect()
-        if self.rgb_service is None or settings is None or not settings.enabled:
-            return
-        self._disable_saved_effect()
-        self.rgb_service.deactivate()
-
-    def _disable_saved_effect(self) -> None:
-        settings = self._saved_effect()
-        if settings is None or self.rgb_effect_store is None:
-            return
-        self.rgb_effect_store.save(replace(settings, enabled=False))
-
-    def _saved_effect(self) -> EffectSettings | None:
-        if self.rgb_effect_store is None:
-            return None
-        try:
-            settings = self.rgb_effect_store.load()
-        except (OSError, ValueError):
-            return None
-        return settings
 
     def _recover_from_failed_activation(self) -> None:
         try:
@@ -346,11 +274,9 @@ def main(arguments: list[str] | None = None) -> int:
         controller = PrivilegedController(
             hardware=SysfsHardware(),
             store=ConfigStore(CONFIG_PATH),
-            service=SystemdUnitService(SERVICE_NAME),
+            service=SystemdFanService(),
             rgb_hardware=LegionRgbHardware(),
             rgb_store=RgbConfigStore(RGB_CONFIG_PATH),
-            rgb_service=SystemdUnitService(RGB_SERVICE),
-            rgb_effect_store=EffectConfigStore(RGB_EFFECT_CONFIG_PATH),
         )
         with _exclusive_control():
             result = _dispatch(controller, arguments)
@@ -380,8 +306,6 @@ def _dispatch(controller: PrivilegedController, arguments: list[str]) -> dict[st
         )
     if len(arguments) == 2 and arguments[0] == "set-rgb-config":
         return controller.set_rgb_configuration(rgb_configuration_from_json(arguments[1]))
-    if len(arguments) == 2 and arguments[0] == "set-rgb-effect":
-        return controller.set_rgb_effect(effect_settings_from_json(arguments[1]))
     if arguments == ["restore-auto"]:
         return controller.restore_auto()
     if len(arguments) == 3 and arguments[0] == "set-feature" and arguments[2] in {"0", "1"}:

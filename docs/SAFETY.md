@@ -104,41 +104,24 @@ Gradient and wave presets are static 24-zone frames encoded with that same
 verified profile `1` sequence. They do not use animation/effect commands and
 must not be represented as firmware animation support.
 
-## Animated effects
+## Static patterns
 
-Animated effects are drawn by this project, one static frame at a time. The
-keyboard is never told to animate itself; no effect, speed, or direction
-command is sent, and the opaque constant bytes in each colour group are
-reproduced unchanged.
+Aurora, fire, comet, crest and colour bands are single 24-zone frames sampled
+from a continuous field, written once through the same verified sequence as any
+other preset. They cost exactly one write, like a solid colour does.
 
-Frames come from a root service, `legion-control-rgbd`, because authorizing
-each frame through PolicyKit would spawn a privileged process 20 times a
-second. That service is a smaller target than the fan daemon:
+Animating them was built and removed. Whether the colour command reaches
+non-volatile controller storage could not be determined on the validated unit,
+and repeating that write many times a second against an unknown endurance was
+not a risk worth taking for motion. The measurements and the two experiments are
+in [`RGB-PROTOCOL.md`](RGB-PROTOCOL.md).
 
-| Property | Behavior |
-|---|---|
-| Devices | `DevicePolicy=closed` with a single `char-hidraw rw` allowance. `PrivateDevices` cannot be used because the controller is a `/dev/hidrawN` node. |
-| Filesystem | `ProtectSystem=strict` and `ProtectHome=yes`; it reads its settings and writes nothing. |
-| Capabilities | Empty bounding and ambient sets, `NoNewPrivileges=yes`. |
-| Network | `PrivateNetwork=yes`, `RestrictAddressFamilies=AF_UNIX AF_NETLINK`. |
-| Identity | The same VID/PID and report-descriptor checks as a static write, run on the descriptor the frames are written to. |
-| Failure | One reopen covers a resume-time re-enumeration; a second failure exits instead of retrying, and `StartLimitBurst=3` stops systemd from restarting it forever. |
-| Stop | The service restores the last saved static configuration, in its own `finally` path and again through `ExecStopPost`. |
-
-The animation never starts on its own. It runs only after an effect is chosen,
-and any static change — a preset, a zone colour, turning lighting off — stops
-it first, because two writers on one controller would fight over the keyboard.
-
-Whether the colour command reaches non-volatile controller storage is **not
-established**. Latency was measured on the validated unit and does not settle
-it: the cost profile fits both a per-group storage write and a volatile push of
-24 LED values over an internal bus. A frame therefore carries an unquantified
-wear risk, and a continuous animation multiplies it by the number of frames.
-
-Treat animated effects as the least-proven part of this project. They are
-opt-in, never start on their own, and any static change stops them. See the
-controller-wear section in [`RGB-PROTOCOL.md`](RGB-PROTOCOL.md) for the
-measurements and for the power-loss test that would resolve the question.
+The application also skips a write whose result would be identical to the one it
+last sent, so a repeated preset or a slider returned to its starting value costs
+the controller nothing. It deliberately does not skip on the strength of the
+saved configuration file: that records what the helper last accepted, not what
+the keyboard shows, so re-applying a preset stays available after `Fn+Space`
+changes the visible profile.
 
 ## Known limits of the safety model
 

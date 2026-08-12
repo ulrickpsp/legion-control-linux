@@ -1,6 +1,6 @@
 [project]
 name = "legion-control"
-version = "0.7.0"
+version = "0.8.0"
 description = "Native Linux controls for supported Lenovo Legion laptops"
 readme = "README.md"
 requires-python = ">=3.12"

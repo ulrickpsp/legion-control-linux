@@ -37,6 +37,7 @@ SUPPORTED_DESCRIPTOR_SIGNATURE: Final = bytes(
 EXPECTED_RGB_KEYS: Final = frozenset({"version", "enabled", "brightness_percent", "zones"})
 EXPECTED_COLOR_KEYS: Final = frozenset({"red", "green", "blue"})
 
+
 FeatureReportWriter = Callable[[Path, tuple[bytes, ...]], None]
 _RGB_REPORT_LOCK = threading.Lock()
 
@@ -105,25 +106,12 @@ class RgbConfigStore:
         return rgb_configuration_from_json(self.path.read_text(encoding="utf-8"))
 
     def save(self, configuration: RgbConfiguration) -> None:
-        self.path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        payload = rgb_configuration_to_json(configuration) + "\n"
-        with NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=self.path.parent,
+        write_text_atomically(
+            self.path,
+            rgb_configuration_to_json(configuration) + "\n",
+            mode=self.mode,
             prefix=".rgb-config-",
-            delete=False,
-        ) as temporary:
-            temporary.write(payload)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-            temporary_path = Path(temporary.name)
-        try:
-            temporary_path.chmod(self.mode)
-            os.replace(temporary_path, self.path)
-            _sync_directory(self.path.parent)
-        finally:
-            temporary_path.unlink(missing_ok=True)
+        )
 
     def clear(self) -> None:
         try:
@@ -131,6 +119,29 @@ class RgbConfigStore:
         except FileNotFoundError:
             return
         _sync_directory(self.path.parent)
+
+
+def write_text_atomically(path: Path, payload: str, *, mode: int, prefix: str) -> None:
+    """Replace a state file in one step so a reader never sees a partial write."""
+
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=prefix,
+        delete=False,
+    ) as temporary:
+        temporary.write(payload)
+        temporary.flush()
+        os.fsync(temporary.fileno())
+        temporary_path = Path(temporary.name)
+    try:
+        temporary_path.chmod(mode)
+        os.replace(temporary_path, path)
+        _sync_directory(path.parent)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 class LegionRgbHardware:
@@ -149,22 +160,21 @@ class LegionRgbHardware:
         return self._is_supported_product() and self._device_path() is not None
 
     def apply(self, configuration: RgbConfiguration) -> None:
+        device = self._require_device()
+        try:
+            self._feature_report_writer(device, reports_for(configuration))
+        except OSError as error:
+            raise RgbHardwareError(
+                f"El teclado RGB rechazó el cambio: {error.strerror or error}."
+            ) from error
+
+    def _require_device(self) -> Path:
         if not self._is_supported_product():
             raise RgbHardwareError("El RGB solo está habilitado para el modelo 83LU.")
         device = self._device_path()
         if device is None:
             raise RgbHardwareError("No aparece el controlador RGB Lenovo/ITE 048d:c195.")
-        reports = (
-            _static_reports(configuration.zones, configuration.brightness_percent)
-            if configuration.enabled and configuration.brightness_percent > 0
-            else _off_reports()
-        )
-        try:
-            self._feature_report_writer(device, reports)
-        except OSError as error:
-            raise RgbHardwareError(
-                f"El teclado RGB rechazó el cambio: {error.strerror or error}."
-            ) from error
+        return device
 
     def _is_supported_product(self) -> bool:
         product_path = self._root / "sys/devices/virtual/dmi/id/product_name"
@@ -260,6 +270,23 @@ def alternating_rgb_configuration(
     return RgbConfiguration(enabled, brightness_percent, zones)
 
 
+def banded_rgb_configuration(
+    colors: tuple[RgbColor, ...],
+    brightness_percent: int,
+    *,
+    enabled: bool = True,
+) -> RgbConfiguration:
+    """Split the zones into equal consecutive bands, one per colour."""
+
+    if not colors:
+        raise ValueError("Se necesita al menos un color para las bandas.")
+    band = RGB_ZONE_COUNT / len(colors)
+    zones = tuple(
+        colors[min(len(colors) - 1, int(index / band))] for index in range(RGB_ZONE_COUNT)
+    )
+    return RgbConfiguration(enabled, brightness_percent, zones)
+
+
 def default_rgb_configuration() -> RgbConfiguration:
     return solid_rgb_configuration(
         RgbColor(229, 72, 77),
@@ -332,6 +359,14 @@ def _require_integer(value: object, name: str) -> int:
     if type(value) is not int:
         raise ValueError(f"{name} debe ser un entero.")
     return value
+
+
+def reports_for(configuration: RgbConfiguration) -> tuple[bytes, ...]:
+    """The exact validated report sequence for one configuration."""
+
+    if configuration.enabled and configuration.brightness_percent > 0:
+        return _static_reports(configuration.zones, configuration.brightness_percent)
+    return _off_reports()
 
 
 def _static_reports(colors: tuple[RgbColor, ...], brightness_percent: int) -> tuple[bytes, ...]:
@@ -426,27 +461,37 @@ def _turn_off_report() -> bytes:
 
 
 def _send_feature_reports(device: Path, reports: tuple[bytes, ...]) -> None:
-    if not reports or any(
-        len(report) != RGB_FEATURE_REPORT_SIZE or report[0] != RGB_REPORT_ID for report in reports
-    ):
-        raise ValueError("Informe RGB Lenovo/ITE inválido.")
+    _require_valid_reports(reports)
     with _RGB_REPORT_LOCK:
         descriptor = os.open(device, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW)
         try:
             _validate_open_device(descriptor)
-            for report in reports:
-                request = _hid_iocsfeature(len(report))
-                written = fcntl.ioctl(
-                    descriptor,
-                    request,
-                    bytearray(report),
-                    True,
-                )
-                if written != len(report):
-                    raise OSError(f"Escritura HID incompleta: {written} de {len(report)} bytes.")
-                time.sleep(RGB_REPORT_DELAY_SECONDS)
+            _write_reports(descriptor, reports)
         finally:
             os.close(descriptor)
+
+
+def _require_valid_reports(reports: tuple[bytes, ...]) -> None:
+    if not reports or any(
+        len(report) != RGB_FEATURE_REPORT_SIZE or report[0] != RGB_REPORT_ID for report in reports
+    ):
+        raise ValueError("Informe RGB Lenovo/ITE inválido.")
+
+
+def _write_reports(descriptor: int, reports: tuple[bytes, ...]) -> None:
+    """Send a sequence, spacing consecutive reports by the validated delay."""
+
+    for index, report in enumerate(reports):
+        if index:
+            time.sleep(RGB_REPORT_DELAY_SECONDS)
+        written = fcntl.ioctl(
+            descriptor,
+            _hid_iocsfeature(len(report)),
+            bytearray(report),
+            True,
+        )
+        if written != len(report):
+            raise OSError(f"Escritura HID incompleta: {written} de {len(report)} bytes.")
 
 
 def _hid_iocsfeature(length: int) -> int:

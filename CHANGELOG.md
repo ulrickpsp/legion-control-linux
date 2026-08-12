@@ -4,10 +4,16 @@ All notable changes to Legion Control are documented here. The project follows
 [Semantic Versioning](https://semver.org/) while the public API and hardware
 support surface mature.
 
-## Unreleased
+## 0.8.0 — 2026-08-12
 
 ### Added
 
+- Five static presets richer than a flat gradient: Bandas, Aurora, Fuego,
+  Cometa and Cresta. Each is one 24-zone frame sampled from a continuous field
+  and written once, exactly like any other preset.
+- Measurements of the controller's write cost and its behaviour across power
+  cycles, in `docs/RGB-PROTOCOL.md`, together with the reasoning for not
+  shipping animation.
 - Doctor now diagnoses the installation, not only the readings: whether the
   privileged helper and its PolicyKit action are present, whether the Lenovo WMI
   modules are loaded, how the BIOS compares with the validated one, the real
@@ -22,10 +28,17 @@ support surface mature.
   project's public releases listing once a day whether a newer version exists
   and reports it on the Doctor page and in the report. It sends no identifier
   and downloads, installs and executes nothing; installation stays with the
-  package manager. Pre-releases count, since every release so far is one.
+  package manager.
 
 ### Changed
 
+- A lighting write that would produce the result already sent is skipped, so a
+  repeated preset or a slider returned to its starting value costs the
+  controller nothing. It is deliberately not skipped on the strength of the
+  saved configuration file, so re-applying a preset still works as a way to
+  recover after `Fn+Space`.
+- The report writer spaces consecutive reports by the validated delay instead
+  of also waiting after the last one.
 - The Doctor JSON report is version 2: findings gained a `remedy` field and the
   environment checks appear as additional findings.
 - `legion-control doctor` runs the environment checks; the application reads
@@ -40,6 +53,17 @@ support surface mature.
   A widget tree is acyclic, so the set bought nothing, and PyGObject hands a
   freed wrapper's address to the next one, so an unrelated widget could inherit
   an address already recorded as seen and keep its source-language text.
+
+### Removed
+
+- Animated keyboard effects, built during this release and then withdrawn.
+  Whether the colour command reaches non-volatile controller storage could not
+  be determined: it survives a full power cycle, but the controller's power rail
+  cannot be cut without disassembly, and latency does not distinguish a storage
+  write from a refresh, since the off report carries no colour and costs the
+  same as a coloured one. Repeating that write many times a second against an
+  unknown endurance was not a risk worth taking for motion. The patterns remain
+  as still frames.
 
 ## 0.7.0 — 2026-08-12
 

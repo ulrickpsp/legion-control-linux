@@ -117,6 +117,75 @@ Off uses two reports:
 Both are padded to 960 bytes. The saved application configuration retains its
 24 colors so they can be reused when lighting is enabled again.
 
+## Static patterns, and why animation is not implemented
+
+Legion Control ships patterns richer than a flat gradient — aurora, fire, a
+comet, a crest, colour bands — by sampling a continuous field at one phase and
+writing that single frame through the sequence above. One preset, one write.
+
+Animating them by resending successive phases was built and then removed. The
+reasoning is recorded here because the measurements are the useful part.
+
+### Measured cost
+
+Median of twenty `HIDIOCSFEATURE` calls on one open descriptor, on the
+validated unit:
+
+| Report | Payload | Median |
+|---|---|---|
+| `C8` select profile | 1 byte | 6.03 ms |
+| `CB` off | 3 bytes, no colour | 37.67 ms |
+| `CB` one colour group | one colour | 37.50 ms |
+| `CB` twenty-four groups | 24 colours | 47.02 ms |
+| `CE` set brightness | 1 byte | 5.90 ms |
+
+The cost belongs to the `CB` command, not to its contents. The off report
+carries no colour at all and still costs as much as a coloured one. The first
+`CB` after a pause completes in about 7 ms and later ones in about 37 ms, which
+reads as controller back-pressure rather than per-byte work.
+
+Driven as fast as it accepted them, the controller sustained about 17 frames per
+second, holding steady across a 200-frame burst: 56.51 ms median over the first
+half against 56.52 ms over the second. Paced at 12.5 frames per second instead,
+the median frame fell to 16–23 ms and the whole animation cost about 0.36 % of
+one CPU.
+
+### Controller wear: unresolved
+
+Command `CB` is described above as saving zone groups into profile `1`. Whether
+that write reaches non-volatile storage **could not be determined**, and it
+decides whether continuous animation is safe: at 12.5 frames per second, even a
+100k-cycle part would be exhausted in roughly 2.2 hours of use.
+
+Two experiments were run on the validated unit.
+
+*Persistence.* A marker frame of eight zones pure red, eight pure green and
+eight pure blue survived two full power cycles, and a later all-white frame at
+raw brightness level 1 survived a third. This was verified rather than assumed:
+the journal shows `systemd-poweroff.service` and `poweroff.target`,
+`/var/lib/legion-control/rgb-config.json` kept its pre-shutdown mtime, and no
+application process or service was running. A live blink test confirmed the
+writes reach the visible keyboard. The controller retains colour and brightness
+across S5 — but a laptop normally keeps that controller powered from the
+internal battery in S5, and the rail cannot be cut without disassembly, so
+survival does not establish flash.
+
+*Latency.* An early reading of the timings above suggested the expense was
+storing colour data. The off report refutes it: no colour, same cost. A
+fixed-cost profile refresh and a fixed-cost page program are indistinguishable
+from here.
+
+So the question stays open, and one asymmetry settles the decision instead. The
+firmware animates the keyboard by itself through `Fn+Space`, so a path that does
+not wear anything must exist inside it — reached by one of the opaque constant
+bytes this project refuses to guess at. Shipping continuous animation and being
+wrong damages the controller permanently; withholding it costs motion, and the
+patterns survive as still frames.
+
+Anyone repeating this on their own hardware should start from the persistence
+test, and should cut power to the controller properly before concluding
+anything.
+
 ## Concurrency and persistence
 
 The root helper serializes privileged operations with
@@ -140,9 +209,16 @@ visibly applied.
 - arbitrary commands or raw caller-provided reports;
 - device-path overrides;
 - interface `01` LampArray writes;
-- animated or streaming effects;
+- animation of any kind, whether by a firmware command or by resending frames;
+- any interpretation of the opaque constant bytes as an effect, speed, or
+  direction selector;
 - controller reads that are not proven safe;
 - USB IDs, DMI products, or descriptor families other than the validated path.
+
+Static patterns rendered by this project from the verified static sequence are
+supported and described under
+[Static patterns](#static-patterns-and-why-animation-is-not-implemented). They
+are single frames, not effects.
 
 ## Research provenance
 

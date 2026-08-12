@@ -21,6 +21,8 @@ from legion_control.rgb import (
     rgb_configuration_from_document,
     rgb_configuration_from_json,
     rgb_configuration_to_json,
+    banded_rgb_configuration,
+    reports_for,
     solid_rgb_configuration,
     wave_rgb_configuration,
 )
@@ -252,9 +254,12 @@ class FeatureReportTransportTests(unittest.TestCase):
         validate_mock.assert_called_once_with(42)
         self.assertEqual(ioctl_mock.call_count, 3)
         self.assertTrue(all(invocation.args[0] == 42 for invocation in ioctl_mock.call_args_list))
+        # The delay spaces consecutive reports, so a three-report sequence waits
+        # twice. A trailing wait before closing would only slow every frame of
+        # an animation down without separating anything.
         self.assertEqual(
             sleep_mock.call_args_list,
-            [call(RGB_REPORT_DELAY_SECONDS)] * 3,
+            [call(RGB_REPORT_DELAY_SECONDS)] * 2,
         )
         close_mock.assert_called_once_with(42)
 
@@ -374,6 +379,55 @@ class StaticPresetTests(unittest.TestCase):
                 # A round trip through the stored document must not alter it.
                 restored = rgb_configuration_from_document(configuration.to_dict())
                 self.assertEqual(restored, configuration)
+
+
+class ReportSequenceTests(unittest.TestCase):
+    def test_an_enabled_configuration_selects_profile_colours_and_brightness(self) -> None:
+        reports = reports_for(solid_rgb_configuration(RgbColor(10, 20, 30), 60))
+
+        self.assertEqual([report[1] for report in reports], [0xC8, 0xCB, 0xCE])
+
+    def test_a_disabled_configuration_uses_the_off_sequence(self) -> None:
+        reports = reports_for(RgbConfiguration(False, 60, (RgbColor(10, 20, 30),) * RGB_ZONE_COUNT))
+
+        self.assertEqual([report[1] for report in reports], [0xC8, 0xCB])
+
+    def test_zero_brightness_is_off_rather_than_a_black_frame(self) -> None:
+        reports = reports_for(RgbConfiguration(True, 0, (RgbColor(10, 20, 30),) * RGB_ZONE_COUNT))
+
+        self.assertEqual([report[1] for report in reports], [0xC8, 0xCB])
+
+    def test_bands_split_the_zones_evenly(self) -> None:
+        configuration = banded_rgb_configuration(
+            (RgbColor(255, 0, 0), RgbColor(0, 255, 0), RgbColor(0, 0, 255)),
+            100,
+        )
+
+        zones = configuration.zones
+        self.assertEqual(len(set(zones)), 3)
+        self.assertEqual(len({zone for zone in zones[:8]}), 1)
+        self.assertEqual(zones[0], RgbColor(255, 0, 0))
+        self.assertEqual(zones[8], RgbColor(0, 255, 0))
+        self.assertEqual(zones[16], RgbColor(0, 0, 255))
+
+    def test_bands_need_at_least_one_colour(self) -> None:
+        with self.assertRaises(ValueError):
+            banded_rgb_configuration((), 100)
+
+    def test_bands_cover_every_zone_when_the_count_does_not_divide(self) -> None:
+        configuration = banded_rgb_configuration(
+            (
+                RgbColor(255, 0, 0),
+                RgbColor(0, 255, 0),
+                RgbColor(0, 0, 255),
+                RgbColor(1, 1, 1),
+                RgbColor(2, 2, 2),
+            ),
+            100,
+        )
+
+        self.assertEqual(len(configuration.zones), RGB_ZONE_COUNT)
+        self.assertEqual(len(set(configuration.zones)), 5)
 
 
 if __name__ == "__main__":

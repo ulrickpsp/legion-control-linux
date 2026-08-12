@@ -26,6 +26,35 @@
     <binary>legion-control</binary>
   </provides>
   <releases>
+    <release version="0.8.0" date="2026-08-12">
+      <description>
+        <p>
+          Añade cinco presets estáticos más elaborados que un degradado plano:
+          Bandas, Aurora, Fuego, Cometa y Cresta. Cada uno es un solo frame de
+          24 zonas, escrito una vez con la misma secuencia ya verificada.
+        </p>
+        <p>
+          Evita reescribir el teclado cuando el resultado sería idéntico al ya
+          enviado. Documenta el coste de escritura del controlador y su
+          comportamiento tras un apagado completo, junto con el motivo de no
+          incluir animación: no se pudo determinar si la orden de color llega a
+          memoria no volátil.
+        </p>
+        <p>
+          Doctor pasa a diagnosticar la instalación además de las lecturas:
+          comprueba el helper con privilegios y su acción PolicyKit, los módulos
+          WMI de Lenovo, la BIOS frente a la validada, el estado real del
+          servicio de curva, y si otro componente escribe platform_profile o
+          maneja el mismo controlador ITE. Cada hallazgo con problema indica
+          cómo resolverlo.
+        </p>
+        <p>
+          Añade avisos de versión opcionales, desactivados por defecto. Al
+          activarlos consultan una vez al día si existe una publicación más
+          reciente. No descargan, no instalan y no envían ningún identificador.
+        </p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-08-12">
       <description>
         <p>

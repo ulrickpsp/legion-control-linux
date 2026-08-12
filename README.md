@@ -4,11 +4,14 @@ Native GTK4/libadwaita control center for the Lenovo Legion Pro 5 16IAX10H
 (`83LU`) on Linux.
 
 > [!WARNING]
-> **Status: alpha.** All physical validation comes from one unit. For 0.7.0 it
-> covered the read-only report, platform profiles, fixed RPM, a curve under
-> load, restore-to-firmware, and the 24-zone RGB path including the presets.
-> The emergency thermal paths at 92 °C and 98 °C were not reached, and package
-> installation, upgrade and removal were not exercised.
+> **Status: stable for the one verified model, `83LU`.** All physical
+> validation comes from one unit. For 0.8.0 it covered the read-only report,
+> platform profiles, fixed RPM, a curve under load, restore-to-firmware, the
+> 24-zone RGB path including every preset, the controller's write latency and
+> power-cycle persistence, and the Doctor environment checks and the release
+> notice against the live system. The emergency thermal paths at 92 °C and
+> 98 °C were not reached, and package installation, upgrade and removal were
+> not exercised.
 > This is not a compatibility promise for another laptop, although truly
 > equivalent units —same `83LU` DMI, BIOS, ITE controller, and WMI attributes—
 > are more likely to behave the same. The application does not expand its
@@ -38,6 +41,8 @@ your package manager. See [Release notices](#release-notices).
 - Custom sustained/slow CPU power limits within firmware-published bounds.
 - Static 24-zone RGB, brightness, presets, wave/gradient frames, and off for
   ITE `048d:c195`.
+- Static patterns beyond flat gradients: aurora, fire, comet, crest and colour
+  bands, each a single verified frame costing one write.
 - Three local quick scenes: Silence, Work, and Game.
 - Opt-in AC/battery scene automation while the application is open.
 - Battery conservation, Fn Lock, and camera power when exposed by the kernel.
@@ -103,7 +108,7 @@ APT so dependencies and package lifecycle scripts are applied:
 
 ```bash
 sha256sum --check SHA256SUMS
-sudo apt install ./legion-control_0.7.0_all.deb
+sudo apt install ./legion-control_0.8.0_all.deb
 ```
 
 Launch **Legion Control** from the application grid.
@@ -217,11 +222,14 @@ gates. A successful unit suite is not evidence for a new laptop model.
 
 ## Scope and roadmap
 
-Version 0.7.0 deliberately excludes overclocking, GPU/MUX switching, animated
-RGB firmware effects, firmware flashing, and third-party kernel modules. Static
-24-zone gradients and waves use only the verified static report sequence; they
-do not claim or send an animation command. New hardware support requires its
-own reversible evidence.
+Version 0.8.0 deliberately excludes overclocking, GPU/MUX switching, animated
+RGB effects of any kind, firmware flashing, and third-party kernel modules.
+Every lighting preset, including the patterns added in this release, is one
+static frame from the verified report sequence. Animation by resending frames
+was built, measured and removed: whether repeated colour writes wear the
+controller could not be determined, and the evidence is recorded in
+[`docs/RGB-PROTOCOL.md`](docs/RGB-PROTOCOL.md). New hardware support requires
+its own reversible evidence.
 
 ## Alpha disclaimer
 

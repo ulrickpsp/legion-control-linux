@@ -14,11 +14,13 @@ from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
 from legion_control.client import ControlPort  # noqa: E402
 from legion_control.i18n import translate  # noqa: E402
+from legion_control.patterns import PatternKind, pattern_configuration  # noqa: E402
 from legion_control.rgb import (  # noqa: E402
     RGB_ZONE_COUNT,
     RgbColor,
     RgbConfiguration,
     alternating_rgb_configuration,
+    banded_rgb_configuration,
     default_rgb_configuration,
     gradient_rgb_configuration,
     rgb_configuration_from_document,
@@ -30,11 +32,69 @@ from legion_control.rgb import (  # noqa: E402
 # Long enough to swallow a slider drag, short enough to feel immediate.
 WRITE_DELAY_MS = 400
 
+
 Operation = Callable[[], dict[str, object]]
 MutationRunner = Callable[
     [Operation, str, Callable[[], None] | None, Callable[[], None] | None],
     None,
 ]
+
+
+class DebouncedWrite:
+    """One coalesced privileged write, plus the state that protects a draft.
+
+    Every write crosses PolicyKit into the privileged helper and sends 960-byte
+    HID reports, so dragging a slider must not turn into one write per pixel.
+
+    A failed write keeps ``failed`` set so a status refresh cannot replace the
+    user's edit with whatever the keyboard last accepted. It never retries on
+    its own: a failing helper would become an endless write loop.
+    """
+
+    def __init__(self, delay_ms: int, perform: Callable[[], bool]) -> None:
+        self._delay_ms = delay_ms
+        self._perform = perform
+        self._timeout_id = 0
+        self.pending = False
+        self.in_flight = False
+        self.failed = False
+
+    @property
+    def settled(self) -> bool:
+        return not self.pending and not self.in_flight and not self.failed
+
+    def schedule(self) -> None:
+        self.pending = True
+        if self._timeout_id:
+            GLib.source_remove(self._timeout_id)
+        self._timeout_id = GLib.timeout_add(self._delay_ms, self._fire)
+
+    def succeeded(self) -> bool:
+        """Report whether the caller may now refresh from the helper.
+
+        An edit made while the helper was busy still has to reach the keyboard,
+        so it is rescheduled instead.
+        """
+
+        self.in_flight = False
+        self.failed = False
+        if self.pending:
+            self.schedule()
+            return False
+        return True
+
+    def failed_once(self) -> None:
+        self.in_flight = False
+        self.failed = True
+
+    def _fire(self) -> bool:
+        self._timeout_id = 0
+        if not self.in_flight:
+            self.pending = False
+            self.in_flight = True
+            if not self._perform():
+                self.in_flight = False
+        return GLib.SOURCE_REMOVE
 
 
 class ZoneSwatch(Gtk.ToggleButton):
@@ -119,12 +179,15 @@ class LightingPage(Adw.PreferencesPage):
         self._show_error = show_error
         self._available = False
         self._refreshing = False
-        self._pending_write = False
-        self._write_in_flight = False
-        self._write_failed = False
-        self._write_timeout_id = 0
         self._selected_zone = 0
         self._zones = list(default_rgb_configuration().zones)
+        self._static_write = DebouncedWrite(WRITE_DELAY_MS, self._perform_static_write)
+        # What this page has actually written, so a repeated preset or a slider
+        # returned to where it started costs the controller nothing. Deliberately
+        # not seeded from the saved configuration: that file records what the
+        # helper last accepted, not what the keyboard shows, so re-applying a
+        # preset stays available as a way to recover after Fn+Space.
+        self._written: RgbConfiguration | None = None
 
         status_group = Adw.PreferencesGroup()
         hero = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
@@ -258,6 +321,11 @@ class LightingPage(Adw.PreferencesPage):
             ("Brasa", self._preset_ember),
             ("Nocturno", self._preset_night),
             ("Ajedrez", self._preset_checker),
+            ("Bandas", self._preset_bands),
+            ("Aurora", self._preset_aurora),
+            ("Fuego", self._preset_fire),
+            ("Cometa", self._preset_comet),
+            ("Cresta", self._preset_crest),
             ("Apagar", self._preset_off),
         ):
             button = Gtk.Button(label=label)
@@ -275,9 +343,10 @@ class LightingPage(Adw.PreferencesPage):
         self._available = bool(capabilities.get("rgb_control"))
         known = bool(status.get("rgb_configuration_known"))
         document = status.get("rgb_configuration")
-        settled = not self._pending_write and not self._write_in_flight and not self._write_failed
-        if settled and known and isinstance(document, dict):
+        if self._static_write.settled and known and isinstance(document, dict):
             try:
+                # The on/off switch is shared by both modes, so the static
+                # configuration only owns it while nothing is animating.
                 self._load_configuration(rgb_configuration_from_document(document))
             except ValueError:
                 known = False
@@ -325,13 +394,7 @@ class LightingPage(Adw.PreferencesPage):
         self._sync_color_button()
 
     def _sync_color_button(self) -> None:
-        color = self._zones[self._selected_zone]
-        rgba = Gdk.RGBA()
-        rgba.red = color.red / 255
-        rgba.green = color.green / 255
-        rgba.blue = color.blue / 255
-        rgba.alpha = 1
-        self._color_button.set_rgba(rgba)
+        self._color_button.set_rgba(_rgba(self._zones[self._selected_zone]))
 
     def _on_color_selected(
         self,
@@ -348,7 +411,7 @@ class LightingPage(Adw.PreferencesPage):
         )
         self._zones[self._selected_zone] = color
         self._zone_buttons[self._selected_zone].set_color(color)
-        self._schedule_write()
+        self._static_write.schedule()
 
     def _on_apply_color_to_all(self, _button: Gtk.Button) -> None:
         color = self._zones[self._selected_zone]
@@ -360,12 +423,12 @@ class LightingPage(Adw.PreferencesPage):
         _parameter: object,
     ) -> None:
         if not self._refreshing:
-            self._schedule_write()
+            self._static_write.schedule()
 
     def _on_brightness_changed(self, adjustment: Gtk.Adjustment) -> None:
         self._brightness_value.set_label(f"{adjustment.get_value():.0f} %")
         if not self._refreshing:
-            self._schedule_write()
+            self._static_write.schedule()
 
     def _preset_legion(self) -> None:
         self._set_preset(solid_rgb_configuration(RgbColor(229, 32, 47), 70))
@@ -423,6 +486,27 @@ class LightingPage(Adw.PreferencesPage):
             alternating_rgb_configuration(RgbColor(229, 32, 47), RgbColor(12, 12, 14), 70)
         )
 
+    def _preset_bands(self) -> None:
+        """Three saturated bands. It began as a diagnostic marker and stayed."""
+        self._set_preset(
+            banded_rgb_configuration(
+                (RgbColor(255, 0, 0), RgbColor(0, 255, 0), RgbColor(0, 0, 255)),
+                100,
+            )
+        )
+
+    def _preset_aurora(self) -> None:
+        self._set_preset(pattern_configuration(PatternKind.AURORA, RgbColor(0, 0, 0), 70, 0.75))
+
+    def _preset_fire(self) -> None:
+        self._set_preset(pattern_configuration(PatternKind.FIRE, RgbColor(0, 0, 0), 70, 0.37))
+
+    def _preset_comet(self) -> None:
+        self._set_preset(pattern_configuration(PatternKind.COMET, RgbColor(0, 229, 255), 70, 0.37))
+
+    def _preset_crest(self) -> None:
+        self._set_preset(pattern_configuration(PatternKind.WAVE, RgbColor(150, 60, 255), 70, 0.5))
+
     def _preset_off(self) -> None:
         configuration = self.current_configuration()
         self._set_preset(
@@ -438,65 +522,44 @@ class LightingPage(Adw.PreferencesPage):
                 configuration.zones,
             )
         )
-        self._schedule_write()
+        self._static_write.schedule()
 
     def _set_all_zones(self, color: RgbColor) -> None:
         self._zones = [color] * RGB_ZONE_COUNT
         for button in self._zone_buttons:
             button.set_color(color)
-        self._schedule_write()
+        self._static_write.schedule()
 
-    def _schedule_write(self) -> None:
-        """Coalesce edits into one write shortly after the user stops.
-
-        Every write crosses PolicyKit into the privileged helper and sends
-        960-byte HID reports, so dragging the brightness slider must not turn
-        into one write per pixel.
-        """
-
-        self._pending_write = True
-        if self._write_timeout_id:
-            GLib.source_remove(self._write_timeout_id)
-        self._write_timeout_id = GLib.timeout_add(WRITE_DELAY_MS, self._flush_write)
-
-    def _flush_write(self) -> bool:
-        self._write_timeout_id = 0
-        if self._write_in_flight or not self._available:
-            return GLib.SOURCE_REMOVE
+    def _perform_static_write(self) -> bool:
+        if not self._available:
+            return False
         try:
             configuration = self.current_configuration()
         except ValueError as error:
             self._show_error(str(error))
-            return GLib.SOURCE_REMOVE
-        self._pending_write = False
-        self._write_in_flight = True
+            return False
+        if configuration == self._written:
+            # Re-clicking a preset, or returning a slider to where it started,
+            # must not cost the controller another write.
+            return False
+        self._written = configuration
         self._run_mutation(
             lambda: self._client.set_rgb_configuration(configuration),
             translate("Iluminación aplicada en las 24 zonas."),
-            self._write_succeeded,
-            self._write_failed_once,
+            self._static_write_succeeded,
+            self._static_write_failed,
         )
-        return GLib.SOURCE_REMOVE
+        return True
 
-    def _write_succeeded(self) -> None:
-        self._write_in_flight = False
-        self._write_failed = False
-        # An edit made while the helper was busy still has to reach the keyboard.
-        if self._pending_write:
-            self._schedule_write()
-        else:
+    def _static_write_failed(self) -> None:
+        """A rejected write never reached the keyboard, so it is not written."""
+
+        self._written = None
+        self._static_write.failed_once()
+
+    def _static_write_succeeded(self) -> None:
+        if self._static_write.succeeded():
             self._request_refresh()
-
-    def _write_failed_once(self) -> None:
-        """Keep the colours on screen so a refresh cannot discard them.
-
-        Without this the next status poll would overwrite the user's edit with
-        whatever the keyboard last accepted. It does not retry on its own: a
-        failing helper would turn into an endless write loop.
-        """
-
-        self._write_in_flight = False
-        self._write_failed = True
 
     def _set_controls_sensitive(self, sensitive: bool) -> None:
         self._controls_group.set_sensitive(sensitive)
@@ -518,6 +581,15 @@ def _rounded_rectangle(
     context.arc(x + radius, y + height - radius, radius, 1.57, 3.14)
     context.arc(x + radius, y + radius, radius, 3.14, 4.71)
     context.close_path()
+
+
+def _rgba(color: RgbColor) -> Gdk.RGBA:
+    rgba = Gdk.RGBA()
+    rgba.red = color.red / 255
+    rgba.green = color.green / 255
+    rgba.blue = color.blue / 255
+    rgba.alpha = 1
+    return rgba
 
 
 def _dictionary(value: object) -> dict[str, Any]:

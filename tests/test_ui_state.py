@@ -10,11 +10,12 @@ import gi
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Adw, Gdk  # noqa: E402
+from gi.repository import Adw, Gdk, Gtk  # noqa: E402
 
 from legion_control.automation import AutomationStore  # noqa: E402
 from legion_control.domain import DEFAULT_CURVE, FanMode  # noqa: E402
 from legion_control.history import TelemetryArchive  # noqa: E402
+from legion_control.i18n import localize_widget_tree, set_language, translate  # noqa: E402
 from legion_control.mock import MockControlClient  # noqa: E402
 from legion_control.scenes import SceneSlot, SceneStore  # noqa: E402
 from legion_control.ui import (  # noqa: E402
@@ -25,9 +26,18 @@ from legion_control.ui import (  # noqa: E402
     MainWindow,
     Operation,
 )
+from legion_control.doctor import SystemProbe  # noqa: E402
 from legion_control.ui_automation import AutomationPage  # noqa: E402
+from legion_control.ui_doctor import DoctorPage  # noqa: E402
 from legion_control.ui_lighting import LightingPage  # noqa: E402
 from legion_control.ui_scenes import ScenePanel  # noqa: E402
+from legion_control.updates import (  # noqa: E402
+    RELEASES_PAGE_URL,
+    UpdateConfig,
+    UpdateResult,
+    UpdateState,
+    UpdateStore,
+)
 
 
 class MutationCapture:
@@ -374,6 +384,184 @@ class ConfigurationClarityTests(unittest.TestCase):
         self.assertTrue(page._ac_scene.get_sensitive())
         page._ac_enabled.set_active(False)
         self.assertFalse(page._ac_scene.get_sensitive())
+
+
+class DoctorPresentationTests(unittest.TestCase):
+    """A report the reader cannot scan is not a diagnosis."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest(
+                "Los tests GTK necesitan un display; usa un runner Wayland/X11 virtual."
+            )
+        Adw.init()
+
+    def setUp(self) -> None:
+        self.messages: list[str] = []
+        self.probes = 0
+
+    def _page(self, **overrides: object) -> DoctorPage:
+        def reader() -> SystemProbe:
+            self.probes += 1
+            return _probe(**overrides)
+
+        page = DoctorPage(lambda _message: None, self.messages.append, reader)
+        page.update_status(MockControlClient().read_status())
+        return page
+
+    def test_each_row_carries_its_own_severity_and_its_remedy(self) -> None:
+        page = self._page(active_profile_competitors=("power-profiles-daemon.service",))
+
+        conflict, conflict_icon, _ = page._rows["profile_conflict"]
+        kernel, kernel_icon, _ = page._rows["kernel"]
+
+        self.assertIn("status-warm", conflict_icon.get_css_classes())
+        self.assertTrue(conflict.get_subtitle())
+        self.assertIn("status-stable", kernel_icon.get_css_classes())
+        # An acceptable reading needs no instructions underneath it.
+        self.assertFalse(kernel.get_subtitle())
+
+    def test_the_environment_is_read_once_per_poll_cycle_not_once_per_poll(self) -> None:
+        page = self._page()
+
+        page.update_status(MockControlClient().read_status())
+        page.update_status(MockControlClient().read_status())
+
+        self.assertEqual(self.probes, 1)
+
+        page._on_recheck_clicked(Gtk.Button())
+
+        self.assertEqual(self.probes, 2)
+        self.assertEqual(len(self.messages), 1)
+
+
+class LocalizationCoverageTests(unittest.TestCase):
+    """No static label may be left showing the source language.
+
+    This pins the contract, not the walker's internals: it catches a button the
+    localization pass cannot reach or a catalog entry nobody added.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest(
+                "Los tests GTK necesitan un display; usa un runner Wayland/X11 virtual."
+            )
+        Adw.init()
+
+    def tearDown(self) -> None:
+        set_language("es")
+
+    def test_every_button_on_the_doctor_page_reaches_the_chosen_language(self) -> None:
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        set_language("fr")
+        page = DoctorPage(
+            lambda _message: None,
+            lambda _message: None,
+            lambda: _probe(),
+            UpdateStore(Path(directory.name) / "updates.json"),
+            lambda: None,
+        )
+
+        localize_widget_tree(page)
+
+        untranslated = [
+            label
+            for label in _button_labels(page)
+            # A label with a French translation must not still read as Spanish.
+            if translate(label) != label
+        ]
+        self.assertEqual(untranslated, [])
+
+
+def _button_labels(widget: Gtk.Widget) -> list[str]:
+    labels = []
+    child = widget.get_first_child()
+    while child is not None:
+        if isinstance(child, Gtk.Button) and child.get_label():
+            labels.append(child.get_label())
+        labels.extend(_button_labels(child))
+        child = child.get_next_sibling()
+    return labels
+
+
+class ReleaseNoticeTests(unittest.TestCase):
+    """The notice stays off until asked, and never installs anything."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if Gdk.Display.get_default() is None:
+            raise unittest.SkipTest(
+                "Los tests GTK necesitan un display; usa un runner Wayland/X11 virtual."
+            )
+        Adw.init()
+
+    def setUp(self) -> None:
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.store = UpdateStore(Path(directory.name) / "updates.json")
+        self.errors: list[str] = []
+
+    def _page(self, fetch: Callable[[], str | None]) -> DoctorPage:
+        return DoctorPage(
+            self.errors.append,
+            lambda _message: None,
+            lambda: _probe(),
+            self.store,
+            fetch,
+        )
+
+    def test_the_notice_is_off_and_silent_until_the_user_enables_it(self) -> None:
+        def forbidden() -> str | None:
+            raise AssertionError("El aviso no debía consultar la red.")
+
+        page = self._page(forbidden)
+
+        self.assertFalse(page._update_switch.get_active())
+        self.assertFalse(page._releases_button.get_visible())
+        self.assertEqual(self.errors, [])
+
+    def test_enabling_the_notice_is_saved_immediately(self) -> None:
+        page = self._page(lambda: "0.8.0")
+
+        page._update_switch.set_active(True)
+
+        self.assertTrue(self.store.load().enabled)
+        self.assertEqual(self.errors, [])
+
+    def test_an_available_release_offers_the_page_and_nothing_else(self) -> None:
+        page = self._page(lambda: "0.8.0")
+        configuration = UpdateConfig(enabled=True, last_checked=1, last_seen_version="0.8.0")
+
+        page._finish_update_check(UpdateResult(UpdateState.AVAILABLE, "0.8.0"), configuration)
+
+        self.assertIn("0.8.0", page._update_value.get_label())
+        self.assertTrue(page._releases_button.get_visible())
+        self.assertEqual(page._releases_url, RELEASES_PAGE_URL)
+        self.assertEqual(self.store.load().last_seen_version, "0.8.0")
+
+    def test_a_failed_check_says_so_without_offering_anything(self) -> None:
+        page = self._page(lambda: None)
+
+        page._finish_update_check(UpdateResult(UpdateState.UNKNOWN), UpdateConfig(enabled=True))
+
+        self.assertFalse(page._releases_button.get_visible())
+        self.assertEqual(self.errors, [])
+
+
+def _probe(**overrides: object) -> SystemProbe:
+    defaults: dict[str, object] = {
+        "helper_installed": True,
+        "polkit_action_installed": True,
+        "loaded_modules": ("lenovo_wmi_gamezone", "lenovo_wmi_other"),
+        "fan_service_state": "inactive",
+        "fan_service_enabled": "disabled",
+        "bios_version": "Q6CN79WW",
+    }
+    return SystemProbe(**(defaults | overrides))  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

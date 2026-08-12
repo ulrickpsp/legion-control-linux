@@ -21,7 +21,13 @@ Native GTK4/libadwaita control center for the Lenovo Legion Pro 5 16IAX10H
 Legion Control exists because broad Legion toolkits do not currently provide
 the verified Gen10 path this laptop needs: in-kernel Lenovo WMI for thermal and
 power controls, plus the 24-zone ITE `048d:c195` keyboard protocol. It uses no
-DKMS module, firmware flash, account, telemetry, or network service.
+DKMS module, firmware flash, account, or telemetry.
+
+The application makes exactly one kind of network request, and only if you turn
+it on: an opt-in daily check of the project's public releases listing, which
+reports whether a newer version exists. It is off by default, sends no
+identifier, and downloads, installs and executes nothing. Updating stays with
+your package manager. See [Release notices](#release-notices).
 
 ## Features
 
@@ -36,8 +42,14 @@ DKMS module, firmware flash, account, telemetry, or network service.
 - Opt-in AC/battery scene automation while the application is open.
 - Battery conservation, Fn Lock, and camera power when exposed by the kernel.
 - Native PolicyKit authorization and a hardened systemd fan daemon.
-- Read-only Doctor report, copy/save support bundle, StatusNotifier tray state,
-  and terminal workflows.
+- Read-only Doctor report that checks the installation as well as the readings:
+  privileged helper and PolicyKit action, Lenovo WMI modules, BIOS against the
+  validated one, fan service state, and anything else writing `platform_profile`
+  or driving the same ITE controller. Each problem states how to resolve it, and
+  the report copies or saves as text or JSON.
+- Opt-in release notices: a daily check of the public releases listing that says
+  whether a newer version exists. Off by default; it never downloads or installs.
+- StatusNotifier tray state and terminal workflows.
 - Interface localization for English, Spanish, French, Simplified Chinese, and
   Russian. It follows the system locale or the saved in-app language choice.
 
@@ -104,6 +116,30 @@ sudo apt remove legion-control
 
 Use `sudo apt purge legion-control` only when you also want to remove saved fan
 and RGB configuration.
+
+## Release notices
+
+Only the latest release receives security support, so the Doctor page can tell
+you when a newer one exists. The switch is off by default.
+
+When you turn it on, the application asks `api.github.com` once a day for this
+repository's public releases listing and compares the newest published tag with
+the installed version. Pre-releases count, because every release of this project
+is one while it is alpha. The answer is stored in
+`~/.config/legion-control/updates.json` so a restart does not repeat the
+request, and a failed request changes nothing.
+
+What it deliberately does not do:
+
+- it does not download, install, verify, unpack, or execute anything;
+- it sends no identifier, no hardware report, and no usage data;
+- it never touches the privileged helper, and it needs no authorization.
+
+The button it offers opens the releases page in your browser. Installing stays
+with APT, which already verifies what it installs. Automatic installation is
+not offered: the package ships a PolicyKit-authorized root helper, and this
+project has no signed package repository or reproducible release pipeline to
+justify letting a remote answer replace that binary unattended.
 
 ## Build from source
 

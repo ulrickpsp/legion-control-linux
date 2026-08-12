@@ -699,6 +699,264 @@ _ENTRIES: Final = (
     ),
     ("Servicio de curva", "Curve service", "Service de courbe", "曲线服务", "Служба кривой"),
     ("activo", "active", "actif", "已启用", "активно"),
+    # Doctor: environment checks and the remedy attached to each finding.
+    (
+        "Módulos del kernel",
+        "Kernel modules",
+        "Modules du noyau",
+        "内核模块",
+        "Модули ядра",
+    ),
+    ("Autorización", "Authorization", "Autorisation", "授权", "Авторизация"),
+    (
+        "Conflicto de perfil",
+        "Profile conflict",
+        "Conflit de profil",
+        "配置文件冲突",
+        "Конфликт профиля",
+    ),
+    ("Conflicto RGB", "RGB conflict", "Conflit RGB", "RGB 冲突", "Конфликт RGB"),
+    ("ninguno", "none", "aucun", "无", "нет"),
+    ("fallido", "failed", "en échec", "失败", "сбой"),
+    ("no legible", "unreadable", "illisible", "无法读取", "не читается"),
+    (
+        "estado no legible",
+        "state unreadable",
+        "état illisible",
+        "状态无法读取",
+        "состояние не читается",
+    ),
+    (
+        "faltan {names}",
+        "missing {names}",
+        "manque {names}",
+        "缺少 {names}",
+        "отсутствует {names}",
+    ),
+    (
+        "falta {names}",
+        "missing {names}: install required",
+        "absent : {names}",
+        "缺失 {names}",
+        "не найдено {names}",
+    ),
+    (
+        "helper y acción PolicyKit instalados",
+        "helper and PolicyKit action installed",
+        "assistant et action PolicyKit installés",
+        "已安装 helper 与 PolicyKit 动作",
+        "helper и действие PolicyKit установлены",
+    ),
+    (
+        "{version} · validada {expected}",
+        "{version} · validated {expected}",
+        "{version} · validée {expected}",
+        "{version} · 已验证 {expected}",
+        "{version} · проверена {expected}",
+    ),
+    ("Volver a comprobar", "Check again", "Vérifier à nouveau", "重新检查", "Проверить снова"),
+    (
+        "Comprobaciones actualizadas.",
+        "Checks refreshed.",
+        "Vérifications actualisées.",
+        "检查已刷新。",
+        "Проверки обновлены.",
+    ),
+    (
+        "Informe Doctor copiado en JSON.",
+        "Doctor report copied as JSON.",
+        "Rapport Doctor copié en JSON.",
+        "诊断报告已复制为 JSON。",
+        "Отчёт диагностики скопирован в JSON.",
+    ),
+    (
+        "No se pudo inspeccionar el sistema: {error}",
+        "The system could not be inspected: {error}",
+        "Impossible d’inspecter le système : {error}",
+        "无法检查系统：{error}",
+        "Не удалось проверить систему: {error}",
+    ),
+    (
+        "Este equipo no está en la lista de modelos verificados.",
+        "This machine is not on the verified model list.",
+        "Cet appareil ne figure pas dans la liste des modèles vérifiés.",
+        "本机不在已验证机型列表中。",
+        "Это устройство отсутствует в списке проверенных моделей.",
+    ),
+    (
+        "El kernel no publica fan1_target; solo queda el control del firmware.",
+        "The kernel does not expose fan1_target; only firmware control remains.",
+        "Le noyau n’expose pas fan1_target ; seul le contrôle du firmware reste.",
+        "内核未提供 fan1_target，仅剩固件控制。",
+        "Ядро не предоставляет fan1_target; остаётся только управление прошивкой.",
+    ),
+    (
+        "No aparece el nodo hidraw de 048d:c195. Reconecta o revisa el modelo.",
+        "No hidraw node for 048d:c195. Reconnect it or check the model.",
+        "Aucun nœud hidraw pour 048d:c195. Reconnectez-le ou vérifiez le modèle.",
+        "未找到 048d:c195 的 hidraw 节点。请重新连接或检查机型。",
+        "Нет узла hidraw для 048d:c195. Переподключите или проверьте модель.",
+    ),
+    (
+        "Sin la versión de BIOS no se puede comparar con la validada.",
+        "Without the BIOS version there is nothing to compare with the validated one.",
+        "Sans la version du BIOS, aucune comparaison avec celle validée n’est possible.",
+        "没有 BIOS 版本就无法与已验证版本比较。",
+        "Без версии BIOS сравнить её с проверенной невозможно.",
+    ),
+    (
+        "Otra BIOS puede mover los límites publicados. Revisa antes de escribir.",
+        "Another BIOS may move the published limits. Check before writing.",
+        "Un autre BIOS peut déplacer les limites publiées. Vérifiez avant d’écrire.",
+        "其他 BIOS 可能改变已公布的限值。写入前请先确认。",
+        "Другая BIOS может изменить опубликованные пределы. Проверьте перед записью.",
+    ),
+    (
+        "Sin los módulos WMI de Lenovo no hay perfil, ventilación ni potencia.",
+        "Without the Lenovo WMI modules there is no profile, fan or power control.",
+        "Sans les modules WMI Lenovo, ni profil, ni ventilation, ni puissance.",
+        "缺少 Lenovo WMI 模块则没有配置文件、风扇与功耗控制。",
+        "Без модулей Lenovo WMI нет профиля, вентиляторов и мощности.",
+    ),
+    (
+        "Instala el paquete: sin esos archivos ningún cambio llega al hardware.",
+        "Install the package: without those files no change reaches the hardware.",
+        "Installez le paquet : sans ces fichiers, aucun changement n’atteint le matériel.",
+        "请安装软件包：缺少这些文件时任何更改都无法写入硬件。",
+        "Установите пакет: без этих файлов изменения не доходят до оборудования.",
+    ),
+    (
+        "Revisa journalctl -u {unit}",
+        "Check journalctl -u {unit}",
+        "Consultez journalctl -u {unit}",
+        "请查看 journalctl -u {unit}",
+        "Смотрите journalctl -u {unit}",
+    ),
+    (
+        "systemctl no respondió; el servicio puede estar en cualquier estado.",
+        "systemctl did not answer; the service may be in any state.",
+        "systemctl n’a pas répondu ; le service peut être dans n’importe quel état.",
+        "systemctl 未响应；服务可能处于任意状态。",
+        "systemctl не ответил; служба может быть в любом состоянии.",
+    ),
+    (
+        "Otro componente escribe platform_profile y puede deshacer una escena.",
+        "Another component writes platform_profile and can undo a scene.",
+        "Un autre composant écrit platform_profile et peut annuler une scène.",
+        "另一个组件会写入 platform_profile，可能撤销场景。",
+        "Другой компонент пишет platform_profile и может отменить сцену.",
+    ),
+    (
+        "Otra herramienta maneja el mismo controlador ITE. Ciérrala antes.",
+        "Another tool drives the same ITE controller. Close it first.",
+        "Un autre outil pilote le même contrôleur ITE. Fermez-le d’abord.",
+        "另一个工具正在驱动同一 ITE 控制器。请先关闭它。",
+        "Другая программа управляет тем же контроллером ITE. Закройте её.",
+    ),
+    (
+        "Sin sensores no hay curva segura: el firmware conserva el control.",
+        "Without sensors there is no safe curve: the firmware keeps control.",
+        "Sans capteurs, pas de courbe sûre : le firmware garde le contrôle.",
+        "没有传感器就没有安全曲线：固件保留控制权。",
+        "Без датчиков нет безопасной кривой: управление остаётся у прошивки.",
+    ),
+    (
+        "Temperatura crítica: deja que el firmware suba los ventiladores.",
+        "Critical temperature: let the firmware raise the fans.",
+        "Température critique : laissez le firmware accélérer les ventilateurs.",
+        "温度危急：让固件提高风扇转速。",
+        "Критическая температура: позвольте прошивке поднять обороты.",
+    ),
+    (
+        "Carga sostenida alta. Un perfil más frío baja la temperatura.",
+        "Sustained high load. A cooler profile brings the temperature down.",
+        "Charge élevée soutenue. Un profil plus frais fait baisser la température.",
+        "持续高负载。更凉的配置文件可降低温度。",
+        "Длительная высокая нагрузка. Прохладный профиль снизит температуру.",
+    ),
+    ("Copiar JSON", "Copy JSON", "Copier le JSON", "复制 JSON", "Копировать JSON"),
+    # Doctor: the opt-in release notice. It reads a version and nothing else.
+    (
+        "Avisos de versión",
+        "Release notices",
+        "Avis de version",
+        "版本提醒",
+        "Уведомления о версии",
+    ),
+    (
+        "Desactivado por defecto · única conexión de red de la aplicación",
+        "Off by default · the application's only network connection",
+        "Désactivé par défaut · seule connexion réseau de l’application",
+        "默认关闭 · 应用程序唯一的网络连接",
+        "Выключено по умолчанию · единственное сетевое соединение приложения",
+    ),
+    (
+        "Avisar de nuevas versiones",
+        "Notify about new releases",
+        "Signaler les nouvelles versions",
+        "提醒新版本",
+        "Сообщать о новых версиях",
+    ),
+    (
+        "Consulta la página de publicaciones una vez al día. No descarga ni instala nada",
+        "Asks the releases page once a day. It downloads and installs nothing",
+        "Interroge la page des versions une fois par jour. Ne télécharge ni n’installe rien",
+        "每天查询一次发布页面。不下载也不安装任何内容",
+        "Запрашивает страницу релизов раз в сутки. Ничего не скачивает и не устанавливает",
+    ),
+    ("Estado", "State", "État", "状态", "Состояние"),
+    (
+        "Ver publicaciones",
+        "View releases",
+        "Voir les versions",
+        "查看发布页",
+        "Открыть релизы",
+    ),
+    ("consultando", "checking", "vérification", "查询中", "проверка"),
+    ("al día", "up to date", "à jour", "已是最新", "актуальна"),
+    (
+        "no se pudo consultar",
+        "could not be checked",
+        "vérification impossible",
+        "无法查询",
+        "не удалось проверить",
+    ),
+    ("desactivado", "off", "désactivé", "已关闭", "выключено"),
+    (
+        "{version} disponible",
+        "{version} available",
+        "{version} disponible",
+        "{version} 可用",
+        "{version} доступна",
+    ),
+    (
+        "{installed} · {latest} disponible",
+        "{installed} · {latest} available",
+        "{installed} · {latest} disponible",
+        "{installed} · {latest} 可用",
+        "{installed} · доступна {latest}",
+    ),
+    (
+        "Solo la última publicación recibe soporte de seguridad.",
+        "Only the latest release receives security support.",
+        "Seule la dernière version reçoit un support de sécurité.",
+        "仅最新发布版本获得安全支持。",
+        "Поддержка безопасности предоставляется только последнему релизу.",
+    ),
+    (
+        "No se cargó el aviso de versión: {error}",
+        "The release notice could not be loaded: {error}",
+        "L’avis de version n’a pas pu être chargé : {error}",
+        "无法加载版本提醒：{error}",
+        "Не удалось загрузить уведомление о версии: {error}",
+    ),
+    (
+        "No se guardó el aviso de versión: {error}",
+        "The release notice could not be saved: {error}",
+        "L’avis de version n’a pas pu être enregistré : {error}",
+        "无法保存版本提醒：{error}",
+        "Не удалось сохранить уведомление о версии: {error}",
+    ),
     (
         "control firmware",
         "firmware control",
@@ -1092,16 +1350,17 @@ def localize_widget_tree(root: object) -> None:
     single pass keeps page constructors readable and also covers accessibility
     tooltips.  Dynamic messages still use :func:`translate` at their update
     site.
+
+    The walk carries no seen-set.  A GTK widget tree is acyclic, so one buys
+    nothing, and de-duplicating by ``id()`` was unsound: PyGObject builds a
+    fresh wrapper per ``get_first_child`` call, and a freed wrapper's address is
+    handed straight to the next one, so an unrelated widget can inherit an
+    address already recorded as seen and be skipped without translating.
     """
     pending = [root]
-    visited: set[int] = set()
     properties = ("title", "subtitle", "description", "tooltip-text", "label")
     while pending:
         widget = pending.pop()
-        identity = id(widget)
-        if identity in visited:
-            continue
-        visited.add(identity)
         find_property = getattr(widget, "find_property", None)
         get_property = getattr(widget, "get_property", None)
         set_property = getattr(widget, "set_property", None)

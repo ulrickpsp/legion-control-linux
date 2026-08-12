@@ -7,6 +7,16 @@ more diagnostics.
 
 ## Collect a small, safe diagnostic set
 
+Start with the built-in report, which covers most of what follows and adds the
+installation checks the commands below cannot show:
+
+```bash
+legion-control doctor
+```
+
+It writes nothing and probes no hardware. Add `--json` for a machine-readable
+copy. Every finding that is not OK states the step that resolves it.
+
 These commands are read-only:
 
 ```bash
@@ -112,6 +122,26 @@ sudo /usr/libexec/legion-control-fand --restore-auto
 Then verify both Lenovo targets are `0` using the read-only command in
 [`SAFETY.md`](SAFETY.md#emergency-recovery). If they are not `0`, or cooling is
 not responding, shut down rather than attempting guessed writes.
+
+## A profile or scene reverts on its own
+
+`legion-control doctor` reports this as a profile conflict. Legion Control is
+not the only thing allowed to write `platform_profile`: `power-profiles-daemon`
+and `tuned` do too, and the out-of-tree `legion_laptop` module claims the same
+WMI methods. Whichever writes last wins, so a scene can be undone seconds after
+it is applied.
+
+On GNOME, `power-profiles-daemon` is what the Settings power mode and the
+battery menu drive, so stopping it removes that desktop control. Leaving it
+running is reasonable; just expect the desktop to win when both are used. If you
+want Legion Control to hold the profile, stop the competing service for the
+session and re-apply:
+
+```bash
+systemctl is-active power-profiles-daemon.service
+```
+
+Only disable it permanently if you accept losing the desktop power selector.
 
 ## RGB control is unavailable
 

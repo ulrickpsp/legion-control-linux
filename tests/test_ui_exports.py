@@ -11,11 +11,25 @@ gi.require_version("Gtk", "4.0")
 
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
+from legion_control.doctor import SystemProbe  # noqa: E402
 from legion_control.history import TelemetryArchive  # noqa: E402
 from legion_control.mock import MockControlClient  # noqa: E402
 from legion_control.ui_doctor import DoctorPage  # noqa: E402
 from legion_control.ui_files import _is_cancelled  # noqa: E402
 from legion_control.ui_history import TelemetryHistoryPanel  # noqa: E402
+
+
+def _stub_probe() -> SystemProbe:
+    """Keep the export tests off the real filesystem and systemd."""
+
+    return SystemProbe(
+        helper_installed=True,
+        polkit_action_installed=True,
+        loaded_modules=("lenovo_wmi_gamezone", "lenovo_wmi_other"),
+        fan_service_state="inactive",
+        fan_service_enabled="disabled",
+        bios_version="Q6CN79WW",
+    )
 
 
 class SaveDestinationTests(unittest.TestCase):
@@ -34,7 +48,7 @@ class SaveDestinationTests(unittest.TestCase):
         self.messages: list[str] = []
 
     def test_doctor_report_is_written_to_the_chosen_path(self) -> None:
-        page = DoctorPage(self.errors.append, self.messages.append)
+        page = DoctorPage(self.errors.append, self.messages.append, _stub_probe)
         page.update_status(MockControlClient().read_status())
         with TemporaryDirectory() as directory:
             destination = Path(directory) / "doctor.txt"
@@ -46,7 +60,7 @@ class SaveDestinationTests(unittest.TestCase):
         self.assertEqual(len(self.messages), 1)
 
     def test_doctor_report_reports_a_write_failure_instead_of_raising(self) -> None:
-        page = DoctorPage(self.errors.append, self.messages.append)
+        page = DoctorPage(self.errors.append, self.messages.append, _stub_probe)
         page.update_status(MockControlClient().read_status())
         with TemporaryDirectory() as directory:
             page._save_to(Path(directory))
@@ -55,7 +69,7 @@ class SaveDestinationTests(unittest.TestCase):
         self.assertEqual(len(self.errors), 1)
 
     def test_doctor_report_reaches_the_clipboard(self) -> None:
-        page = DoctorPage(self.errors.append, self.messages.append)
+        page = DoctorPage(self.errors.append, self.messages.append, _stub_probe)
         page.update_status(MockControlClient().read_status())
 
         page._on_copy_clicked(Gtk.Button())

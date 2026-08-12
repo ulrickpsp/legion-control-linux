@@ -57,6 +57,9 @@ Examples of in-scope issues include:
 - bypass of the exact product or RGB-controller checks;
 - arbitrary filesystem or HID writes;
 - unsafe parsing that reaches a privileged mutation;
+- any path by which the opt-in release notice writes to disk outside its own
+  configuration file, reaches a privileged operation, leaks an identifier, or
+  causes anything to be downloaded, installed, or executed;
 - races that interleave fan, power, profile, service, or RGB operations;
 - failure paths that prevent a reasonable attempt to restore firmware fan
   control;

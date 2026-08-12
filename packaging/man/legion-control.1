@@ -25,7 +25,12 @@ product 83LU (Legion Pro 5 16IAX10H).
 .PP
 The application controls platform profiles, validated fan modes, bounded Custom
 CPU power, selected device switches, and the exact ITE 048d:c195 24-zone RGB
-keyboard endpoint. It installs no DKMS module and performs no network access.
+keyboard endpoint. It installs no DKMS module.
+.PP
+The only network access is an opt-in release notice, disabled by default, which
+asks the project's public releases listing once a day whether a newer version
+exists and reports it on the Doctor page. It sends no identifier and downloads,
+installs and executes nothing; installation remains the package manager's job.
 .PP
 .B status
 and
@@ -33,6 +38,13 @@ and
 are read-only terminal workflows. The latter emits a human-readable support
 report, or JSON with
 .BR --json .
+Besides the hardware readings it checks the installation itself: the privileged
+helper and its PolicyKit action, the Lenovo WMI kernel modules, the BIOS against
+the validated one, the state of the fan service, and any other component that
+writes
+.I platform_profile
+or drives the same ITE keyboard controller. Every problem carries the step that
+resolves it. Nothing is written or probed on the hardware.
 .B scene
 applies a saved local scene and
 .B restore-firmware

@@ -49,6 +49,13 @@ support surface mature.
 
 ### Fixed
 
+- An upgrade could keep running the previous release. The package pins every
+  source mtime so builds stay reproducible, and Python invalidates cached
+  bytecode by the source's mtime and size, so a `.pyc` from the installed
+  version stayed valid for any file whose length was unchanged. Upgrading
+  0.6.0 to 0.8.0 on the development laptop went on reporting 0.6.0 from stale
+  bytecode. The entry points no longer write bytecode, and installation and
+  removal clear what earlier versions left behind.
 - The interface localization pass no longer de-duplicates widgets by `id()`.
   A widget tree is acyclic, so the set bought nothing, and PyGObject hands a
   freed wrapper's address to the next one, so an unrelated widget could inherit

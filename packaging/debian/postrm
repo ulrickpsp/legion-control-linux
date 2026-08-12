@@ -5,6 +5,14 @@ if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
 fi
 
+# Bytecode is not shipped, so dpkg does not know to remove it. Only .pyc files
+# in that one directory are touched, and the directories are removed only if
+# they are already empty.
+rm -f /usr/lib/legion-control/legion_control/__pycache__/*.pyc
+rmdir /usr/lib/legion-control/legion_control/__pycache__ 2>/dev/null || true
+rmdir /usr/lib/legion-control/legion_control 2>/dev/null || true
+rmdir /usr/lib/legion-control 2>/dev/null || true
+
 if [ "$1" = "purge" ]; then
     rm -f \
         /var/lib/legion-control/fan-config.json \

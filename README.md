@@ -4,14 +4,14 @@ Native GTK4/libadwaita control center for the Lenovo Legion Pro 5 16IAX10H
 (`83LU`) on Linux.
 
 > [!WARNING]
-> **Status: stable for the one verified model, `83LU`.** All physical
-> validation comes from one unit. For 0.8.0 it covered the read-only report,
-> platform profiles, fixed RPM, a curve under load, restore-to-firmware, the
-> 24-zone RGB path including every preset, the controller's write latency and
-> power-cycle persistence, and the Doctor environment checks and the release
-> notice against the live system. The emergency thermal paths at 92 °C and
-> 98 °C were not reached, and package installation, upgrade and removal were
-> not exercised.
+> **Status: beta.** All physical validation comes from one unit. For 0.8.0 it
+> covered the read-only report, platform profiles, fixed RPM, a curve under
+> load, restore-to-firmware, the 24-zone RGB path including every preset, the
+> controller's write latency and power-cycle persistence, the Doctor
+> environment checks and the release notice against the live system, and
+> package upgrade from 0.6.0, removal and reinstallation, including the
+> firmware-restore path removal takes. The emergency thermal paths at 92 °C and
+> 98 °C were not reached.
 > This is not a compatibility promise for another laptop, although truly
 > equivalent units —same `83LU` DMI, BIOS, ITE controller, and WMI attributes—
 > are more likely to behave the same. The application does not expand its
@@ -129,8 +129,8 @@ you when a newer one exists. The switch is off by default.
 
 When you turn it on, the application asks `api.github.com` once a day for this
 repository's public releases listing and compares the newest published tag with
-the installed version. Pre-releases count, because every release of this project
-is one while it is alpha. The answer is stored in
+the installed version. Pre-releases count, because this project published its
+earlier releases as such. The answer is stored in
 `~/.config/legion-control/updates.json` so a restart does not repeat the
 request, and a failed request changes nothing.
 
@@ -231,9 +231,9 @@ controller could not be determined, and the evidence is recorded in
 [`docs/RGB-PROTOCOL.md`](docs/RGB-PROTOCOL.md). New hardware support requires
 its own reversible evidence.
 
-## Alpha disclaimer
+## Beta disclaimer
 
-This is independent community **alpha** software. It changes fan, power,
+This is independent community **beta** software. It changes fan, power,
 platform-profile and keyboard-lighting state. Use it at your own risk; monitor
 temperatures, do not bypass hardware checks, and return to firmware control if
 behavior is unexpected. To the maximum extent allowed by law, the authors and

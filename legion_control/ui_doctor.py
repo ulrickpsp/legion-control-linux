@@ -262,8 +262,9 @@ class DoctorPage(Adw.PreferencesPage):
 
     def _on_releases_clicked(self, _button: Gtk.Button) -> None:
         # Opening the page is the whole action: nothing is downloaded or run.
+        root = self.get_root()
         launcher = Gtk.UriLauncher.new(self._releases_url)
-        launcher.launch(self.get_root(), None, None)
+        launcher.launch(root if isinstance(root, Gtk.Window) else None, None, None)
 
     def _on_copy_clicked(self, _button: Gtk.Button) -> None:
         self.get_clipboard().set(self._report.to_text())

@@ -126,7 +126,7 @@ def probe_system(
 
     runner = run_systemctl or _systemctl_states
     units = (FAN_SERVICE_NAME, *PROFILE_COMPETITORS, *RGB_COMPETITORS)
-    states = dict(zip(units, runner("is-active", units)))
+    states: dict[str, str] = dict(zip(units, runner("is-active", units)))
     enabled = runner("is-enabled", (FAN_SERVICE_NAME,))
     return SystemProbe(
         helper_installed=_relative_to(root, PRIVILEGED_HELPER_PATH).exists(),

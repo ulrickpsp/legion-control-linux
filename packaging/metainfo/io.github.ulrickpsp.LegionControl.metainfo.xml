@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.ulrickpsp.LegionControl</id>
   <name>Legion Control</name>
-  <summary>Controles alpha para el Lenovo Legion 83LU en Linux</summary>
+  <summary>Controles beta para el Lenovo Legion 83LU en Linux</summary>
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
   <developer id="io.github.ulrickpsp">
@@ -10,7 +10,7 @@
   </developer>
   <description>
     <p>
-      Versión alpha validada en una sola unidad Lenovo Legion Pro 5 16IAX10H
+      Versión beta validada en una sola unidad Lenovo Legion Pro 5 16IAX10H
       (DMI 83LU). Consulta temperaturas y ventiladores, cambia perfiles y
       potencia, aplica curvas seguras y controla el teclado RGB ITE de 24
       zonas. Incluye Doctor solo lectura, historial local exportable y
